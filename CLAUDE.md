@@ -26,5 +26,12 @@ recommend:
 
 ## Project status
 
-Scaffolding only so far — no application code yet (no ESPN API calls,
-ranking logic, or recommendation logic implemented).
+Early stage. `check_connection.py` connects to the ESPN league via
+`espn-api` and prints teams/rosters as a sanity check. Ranking-blending
+and recommendation logic (draft, start/sit, waiver) not yet implemented.
+
+## Config
+
+`.env` variables (see `.env.example`): `ESPN_LEAGUE_ID`, `ESPN_S2`,
+`ESPN_SWID`, `ESPN_SEASON`, `ESPN_TEAM_ID` (my team within the league,
+"@ Heylils", id 8).

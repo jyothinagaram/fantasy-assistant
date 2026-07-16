@@ -2,5 +2,6 @@ certifi==2026.6.17
 charset-normalizer==3.4.9
 espn-api==0.46.0
 idna==3.18
+python-dotenv==1.2.1
 requests==2.32.5
 urllib3==2.2.3
