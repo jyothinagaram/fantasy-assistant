@@ -40,14 +40,27 @@ To make recommendations, the tool should pull from:
 
 ## Project status
 
-Early stage. `check_connection.py` connects to the ESPN league via
-`espn-api` and prints teams/rosters as a sanity check. Nothing yet pulls
-outside rankings/projections/articles, and no recommendation logic (draft,
-start/sit, waiver, matchup-aware, trades) is implemented.
+Two scripts work today:
 
-Rough build order: (1) draft rankings blender, since draft comes first
-chronologically, (2) start/sit and waiver recommendations once the season
-has live rosters/matchups, (3) advanced matchup- and trade-aware
+- `check_connection.py` — connects to the ESPN league via `espn-api` and
+  prints teams/rosters as a sanity check.
+- `draft_rankings.py` — builds the draft board. Ranks players by value over
+  replacement (VOR) computed from ESPN projections plus the league's actual
+  roster rules, blended 75/25 with how widely each player is rostered.
+  Groups players into tiers to show where the real drop-offs are. Prints a
+  top-60 board and writes the full list to `output/draft_board.csv`
+  (`output/` is gitignored — boards are regenerated, not committed).
+  Run with `.venv/bin/python draft_rankings.py`.
+
+Still missing: the draft board only reads ESPN. Both of its signals
+(projections and roster percentage) come from ESPN itself, so no outside
+rankings — FantasyPros and the like — and no writer/article commentary are
+being pulled yet. No start/sit, waiver, matchup-aware, or trade logic
+exists.
+
+Rough build order: (1) draft rankings blender — first pass done, still
+needs non-ESPN sources, (2) start/sit and waiver recommendations once the
+season has live rosters/matchups, (3) advanced matchup- and trade-aware
 recommendations once the basics work.
 
 ## Config
