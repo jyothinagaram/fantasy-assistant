@@ -40,31 +40,54 @@ To make recommendations, the tool should pull from:
 
 ## Project status
 
-Two scripts work today:
+The draft tooling is built and tested. Files:
 
-- `check_connection.py` — connects to the ESPN league via `espn-api` and
-  prints teams/rosters as a sanity check.
-- `draft_rankings.py` — builds the draft board. Ranks players by value over
-  replacement (VOR) computed from ESPN projections plus the league's actual
-  roster rules, blended 75/25 with how widely each player is rostered.
-  Groups players into tiers to show where the real drop-offs are. Prints a
-  top-60 board and writes the full list to `output/draft_board.csv`
-  (`output/` is gitignored — boards are regenerated, not committed).
-  Run with `.venv/bin/python draft_rankings.py`.
+- `leagues.py` — finds my leagues automatically by asking ESPN's fan API,
+  so league IDs never need to be pasted into config. Falls back to
+  `ESPN_LEAGUE_ID` in `.env` if that lookup fails.
+- `rankings.py` — the value engine. Computes value over replacement (VOR)
+  from ESPN projections and the league's own roster rules, blends it 75/25
+  with roster percentage, and groups players into tiers. Everything is
+  per-league: ESPN returns different projections for a full-PPR league than
+  a half-PPR one, so the boards genuinely differ.
+- `advice.py` — decides who *I* should take, given my roster, who is left,
+  and how many picks until my next turn. Snake-draft aware.
+- `draft_assistant.py` + `page.py` — the live draft tool. Opens a local web
+  page showing the recommended pick and why. Run with
+  `.venv/bin/python draft_assistant.py`.
+- `draft_rankings.py` — the static cheat-sheet version. Prints a top-60
+  board and writes a CSV per league to `output/` (gitignored).
+- `check_connection.py` — original sanity check.
 
-Still missing: the draft board only reads ESPN. Both of its signals
-(projections and roster percentage) come from ESPN itself, so no outside
-rankings — FantasyPros and the like — and no writer/article commentary are
+Unverified until draft day: whether ESPN publishes picks to its read API
+*during* a live draft. `draft_assistant.py` polls for them and uses them if
+they appear, but manual click-to-mark is the primary path and works
+regardless. Do not "fix" this by assuming sync works.
+
+Still missing: every signal still comes from ESPN itself, so no outside
+rankings (FantasyPros and the like) and no writer/article commentary are
 being pulled yet. No start/sit, waiver, matchup-aware, or trade logic
 exists.
 
-Rough build order: (1) draft rankings blender — first pass done, still
-needs non-ESPN sources, (2) start/sit and waiver recommendations once the
-season has live rosters/matchups, (3) advanced matchup- and trade-aware
-recommendations once the basics work.
+Rough build order: (1) draft tooling — done, still needs non-ESPN sources,
+(2) start/sit and waiver recommendations once the season has live
+rosters/matchups, (3) advanced matchup- and trade-aware recommendations
+once the basics work.
+
+## Leagues
+
+Three ESPN leagues for 2026, all 12-team, and they do NOT share rules —
+anything that assumes one format is a bug:
+
+| League | ID | My team | Rules |
+|---|---|---|---|
+| The Boyz are Back | 930020 | 2 | half PPR, **2 flex** |
+| D.C.F. | 1648293 | 10 | **full PPR**, 1 flex |
+| Only Sig Chi's, Mkay? | 946985 | 8 | half PPR, 1 flex |
 
 ## Config
 
-`.env` variables (see `.env.example`): `ESPN_LEAGUE_ID`, `ESPN_S2`,
-`ESPN_SWID`, `ESPN_SEASON`, `ESPN_TEAM_ID` (my team within the league,
-"@ Heylils", id 8).
+`.env` variables (see `.env.example`): `ESPN_SEASON`, `ESPN_S2`, `ESPN_SWID`.
+`ESPN_LEAGUE_ID` / `ESPN_TEAM_ID` are now only a fallback — leagues are
+discovered automatically. `ESPN_S2` and `ESPN_SWID` expire periodically and
+have to be re-copied from a browser session.
