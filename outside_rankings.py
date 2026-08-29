@@ -30,6 +30,7 @@ draft should ever depend on a website being up.
 import json
 import os
 import re
+import threading
 import time
 
 import requests
@@ -59,6 +60,36 @@ BROWSER_HEADERS = {
 
 # ESPN and FantasyPros spell two teams differently. Left is FantasyPros.
 TEAM_ALIASES = {"JAC": "JAX", "WAS": "WSH", "LA": "LAR"}
+
+# FantasyPros' robots.txt asks automated visitors to leave five seconds
+# between requests, so we do. In practice this costs nothing -- a session
+# downloads at most two or three pages and then reuses them for hours -- but
+# being a well-behaved guest on someone else's website is worth five seconds.
+CRAWL_DELAY_SECONDS = 5
+
+_last_request_at = 0.0
+_request_lock = threading.Lock()
+
+
+def polite_get(url):
+    """
+    Fetches a page, never sooner than five seconds after the last one
+    finished.
+
+    The wait is measured from the END of the previous request, so there are
+    always a full five quiet seconds in between. The lock is held across the
+    whole fetch, so two boards being built at the same time queue up rather
+    than firing together.
+    """
+    global _last_request_at
+    with _request_lock:
+        waiting = CRAWL_DELAY_SECONDS - (time.time() - _last_request_at)
+        if waiting > 0:
+            time.sleep(waiting)
+        try:
+            return requests.get(url, headers=BROWSER_HEADERS, timeout=30)
+        finally:
+            _last_request_at = time.time()
 
 
 # ---------------------------------------------------------------------------
@@ -123,7 +154,7 @@ def download(scoring):
     we ask for the page and lift the JSON straight out of the source rather
     than trying to read the rendered table.
     """
-    response = requests.get(SCORING_URLS[scoring], headers=BROWSER_HEADERS, timeout=30)
+    response = polite_get(SCORING_URLS[scoring])
     response.raise_for_status()
 
     match = re.search(r"var\s+ecrData\s*=\s*(\{.*?\});\s*\n", response.text, re.S)
