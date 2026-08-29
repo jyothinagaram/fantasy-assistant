@@ -53,6 +53,34 @@ EXPERT_NOTE_GAP = 20
 # FantasyPros publishes the standard deviation of every analyst's rank.
 EXPERT_SPREAD_NOTE = 8.0
 
+# --- how much a player's SITUATION is allowed to matter ---------------------
+#
+# Being a rookie, or having just changed teams, says something the projections
+# cannot know yet. But that only matters where the numbers have stopped
+# telling players apart. In the first hundred picks the rankings are dense and
+# reliable and this stays switched off entirely; by the bench rounds, where
+# everyone left is below replacement level and VOR is flat, it gets its full
+# (still small) say.
+#
+# Note what does NOT appear here: anything derived from reading prose. Written
+# notes are shown to you and never scored, because "he is not the sleeper
+# everyone thinks" and "he is a sleeper" are nearly the same sentence.
+COMMENTARY_MAX_TILT = 0.12
+COMMENTARY_QUIET_UNTIL = 100   # no effect at all above this rank
+COMMENTARY_FULL_BY = 250       # full effect from here down
+
+ARCHETYPE_WEIGHT = {
+    "rookie": 1.0,        # no NFL history for a projection to lean on
+    "second_year": 1.0,   # the classic year-two jump
+    # Changing teams is flagged but NOT scored. It cuts both ways: one writer
+    # calls a move "a role that could be larger than expected", another calls
+    # the same kind of move a bust because the player is 33 and starting over.
+    # The move is a fact; whether it helps is a judgement, and that is yours.
+    "new_team": 0.0,
+    "injury_watch": 0.0,  # surfaced for you to read, never scored either way
+}
+ARCHETYPE_WEIGHT_CAP = 1.5
+
 
 # ---------------------------------------------------------------------------
 # What your roster is supposed to look like
@@ -328,6 +356,36 @@ def expert_adjustment(player):
     return 1.0 + EXPERT_TILT * tilt
 
 
+def commentary_adjustment(player):
+    """
+    A small lift for players whose situation the projections cannot see yet --
+    rookies, second-year players, and anyone in a new offence.
+
+    Deliberately does nothing near the top of the board. Up there the rankings
+    are dense, the experts agree, and a nudge would only add noise. It fades
+    in through the flex rounds and reaches full strength in the bench rounds,
+    which is exactly where a beat reporter knows more than a projection.
+    """
+    shapes = player.get("archetypes") or []
+    if not shapes:
+        return 1.0
+
+    rank = player.get("overall_rank") or 9999
+    if rank <= COMMENTARY_QUIET_UNTIL:
+        return 1.0
+
+    depth = min(
+        1.0,
+        (rank - COMMENTARY_QUIET_UNTIL)
+        / float(COMMENTARY_FULL_BY - COMMENTARY_QUIET_UNTIL),
+    )
+    weight = min(
+        ARCHETYPE_WEIGHT_CAP,
+        sum(ARCHETYPE_WEIGHT.get(shape["tag"], 0.0) for shape in shapes),
+    )
+    return 1.0 + COMMENTARY_MAX_TILT * depth * (weight / ARCHETYPE_WEIGHT_CAP)
+
+
 def bye_clash(player, roster):
     """How many players you already have share this player's bye week."""
     if not player.get("bye_week"):
@@ -366,10 +424,23 @@ def explain(player, need, scarcity, open_slots, clash, turn):
     elif "FLEX" in open_slots and position in FLEX_POSITIONS:
         reasons.append("Fills your open flex spot.")
 
+    # Situations the projections cannot see. These come before the
+    # below-replacement bail-out on purpose: deep in the draft, "rookie in a
+    # new offence" IS the reason to look at someone, and that is exactly
+    # where the numbers have given up.
+    for shape in (player.get("archetypes") or []):
+        reasons.append(shape["why"])
+
     gap = turn.get("picks_until_turn_after")
     if player["vor"] <= 0:
         # Below replacement level -- there is no scarcity story worth telling.
-        reasons.append("Bench depth -- no better than a waiver pickup.")
+        # If a situation was flagged just above, that is the actual case for
+        # him; if not, he really is just depth.
+        reasons.append(
+            "Bench depth on the numbers -- the situation above is the case for him."
+            if player.get("archetypes")
+            else "Bench depth -- no better than a waiver pickup."
+        )
         return reasons
 
     if scarcity["risk"] >= 0.6 and scarcity["drop_to_next_tier"] >= 8:
@@ -469,6 +540,9 @@ def recommend(board, drafted_ids, my_roster, plan, draft_slot, picks_made, limit
         score += DEPTH_TIEBREAK * player["projection"] * need
         # Then let the outside experts nudge the whole thing up or down.
         score *= expert_adjustment(player)
+        # And give late-round situations -- rookies, new offences -- their
+        # small say, which is nothing at all near the top of the board.
+        score *= commentary_adjustment(player)
         if clash >= 2:
             score -= 4
 

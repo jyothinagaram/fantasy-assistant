@@ -56,6 +56,41 @@ PAGE_HTML = r"""<!doctype html>
   .pick .cta { margin-top:14px; display:flex; gap:8px; }
   .cta button.mine { background:var(--good); color:#06240f; border-color:transparent; font-weight:650; }
 
+  /* --- what the writers say --- */
+  .writers { margin-top:15px; padding-top:13px; border-top:1px solid var(--line); }
+  .writers .wlabel {
+    font-size:11px; letter-spacing:.09em; text-transform:uppercase;
+    color:var(--dim); margin-bottom:7px;
+  }
+  .writers .wnote { margin:0 0 9px; font-size:14px; line-height:1.5; color:#cbd5e6; }
+  .writers .wdate { color:var(--dim); font-size:12px; }
+  .writers .wnone { color:var(--dim); font-size:13px; font-style:italic; }
+  .writers .wquote {
+    margin:9px 0 0; padding:0 0 0 12px; border-left:2px solid var(--line);
+    font-size:13.5px; line-height:1.5; color:#c3cee0;
+  }
+  .writers .wquote cite {
+    display:block; margin-top:3px; font-style:normal;
+    font-size:11.5px; color:var(--dim);
+  }
+
+  /* situation tags -- facts, not opinions */
+  .tag {
+    display:inline-block; font-size:10px; font-weight:700; letter-spacing:.06em;
+    padding:2px 6px; border-radius:4px; margin-left:6px; vertical-align:middle;
+    background:#1d3050; color:#8fc0ff; text-transform:uppercase;
+  }
+  .tag.rookie { background:#123f2c; color:#6ee7a8; }
+  .tag.new_team { background:#3a2a5e; color:#c9aaff; }
+  .tag.second_year { background:#1d3050; color:#8fc0ff; }
+  .tag.injury_watch { background:#4a3410; color:#ffc46b; }
+
+  .rownote {
+    font-size:11.5px; color:#7f8ca3; font-style:italic; margin-top:2px;
+    display:-webkit-box; -webkit-line-clamp:1; -webkit-box-orient:vertical;
+    overflow:hidden;
+  }
+
   /* --- setup nudge --- */
   .setup { padding:16px 20px; margin-bottom:16px; border-left:4px solid var(--warn); }
 
@@ -215,6 +250,40 @@ function render(state) {
   renderRoster(state);
 }
 
+// Situation tags. These are facts -- drafted this year, changed teams -- not
+// anybody's opinion, which is why they are allowed on the board at all.
+const TAG_LABEL = {rookie:"rookie", second_year:"2nd yr", new_team:"new team", injury_watch:"injury"};
+
+function tags(p) {
+  return (p.archetypes || [])
+    .map(a => `<span class="tag ${a.tag}">${esc(TAG_LABEL[a.tag] || a.tag)}</span>`)
+    .join("");
+}
+
+// The written note, shown and never scored. If a writer is being sarcastic
+// about a player, you will spot it in a second and the tool never will --
+// so the tool does not try.
+function writersBlock(p) {
+  const note = p.note_detail || p.note;
+  const quotes = p.quotes || [];
+  if (!note && !quotes.length) {
+    return `<div class="writers"><div class="wlabel">What the writers say</div>
+      <div class="wnone">Nothing recent on him.</div></div>`;
+  }
+  // Quotes are what somebody actually wrote about him, so they are shown
+  // verbatim with the piece they came from. Nothing here is interpreted.
+  const said = quotes.slice(0, 3).map(q => `
+    <blockquote class="wquote">${esc(q.quote)}
+      <cite>${esc(q.headline)}${q.byline ? ` · ${esc(q.byline)}` : ""}</cite>
+    </blockquote>`).join("");
+  return `<div class="writers">
+    <div class="wlabel">What the writers say</div>
+    ${note ? `<p class="wnote">${esc(note)}${
+      p.note_date ? ` <span class="wdate">— ${esc(p.note_date.slice(0, 11))}</span>` : ""}</p>` : ""}
+    ${said}
+  </div>`;
+}
+
 function renderPick(state) {
   const box = document.getElementById("pick");
   const top = state.recommendations[0];
@@ -235,13 +304,14 @@ function renderPick(state) {
 
   box.innerHTML = `
     <div class="status ${onClock ? "now" : ""}">${esc(status)}</div>
-    <div class="who">${esc(top.name)}</div>
+    <div class="who">${esc(top.name)}${tags(top)}</div>
     <div class="meta">
       <span class="pos ${posClass(top.position)}">${esc(top.position_rank)}</span>
       &nbsp;${esc(top.pro_team)} · ${top.projection.toFixed(0)} proj · ${top.vor.toFixed(0)} VOR · ${esc(top.tier)}${
         top.expert_ranked ? ` · experts have him ${Math.round(top.ecr)}` : ""}
     </div>
     <ul>${top.reasons.map(r => `<li>${esc(r)}</li>`).join("") || "<li>Best value on the board.</li>"}</ul>
+    ${writersBlock(top)}
     <div class="cta">
       <button class="mine" onclick="pick(${top.player_id}, true)">I drafted him</button>
       <button onclick="pick(${top.player_id}, false)">Someone else took him</button>
@@ -272,8 +342,10 @@ function renderRows(state, force) {
         <div class="nm">${esc(p.name)}
           ${p.injury_status !== "ACTIVE" && p.injury_status !== "NORMAL"
             ? `<span class="hurt">${esc(p.injury_status)}</span>` : ""}
+          ${tags(p)}
         </div>
         ${p.reasons.length ? `<div class="why">${esc(p.reasons[0])}</div>` : ""}
+        ${p.note ? `<div class="rownote" title="${esc(p.note_detail || p.note)}">${esc(p.note)}</div>` : ""}
       </td>
       <td><span class="pos ${posClass(p.position)}">${esc(p.position_rank)}</span></td>
       <td class="why">${esc(p.pro_team)}</td>

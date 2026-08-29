@@ -20,6 +20,7 @@ take, given who is already on your roster, lives in advice.py.
 
 from collections import defaultdict
 
+import commentary
 import outside_rankings
 
 
@@ -294,7 +295,8 @@ def add_position_ranks_and_tiers(players):
 # The whole pipeline in one call
 # ---------------------------------------------------------------------------
 
-def build_board(league, pool_size=POOL_SIZE, use_experts=True, force_refresh=False):
+def build_board(league, pool_size=POOL_SIZE, use_experts=True, force_refresh=False,
+                use_commentary=True, progress=None):
     """
     Runs everything above and hands back the finished, ranked board plus
     the supporting numbers, tailored to this league's rules.
@@ -332,9 +334,18 @@ def build_board(league, pool_size=POOL_SIZE, use_experts=True, force_refresh=Fal
     players = blend(players, have_experts=experts_info["used"])
     players = add_position_ranks_and_tiers(players)
 
+    # Commentary comes last, because it needs the finished ranking to know
+    # which players are deep enough down the board to be worth reading about.
+    notes_info = {"used": False, "looked_up": 0, "with_note": 0, "with_archetype": 0}
+    if use_commentary:
+        season = getattr(league, "year", None)
+        if season:
+            notes_info = commentary.attach(players, season, progress=progress)
+
     return {
         "players": players,
         "starters": starters,
         "replacement": levels,
         "experts": experts_info,
+        "commentary": notes_info,
     }

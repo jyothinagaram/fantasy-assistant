@@ -58,6 +58,15 @@ The draft tooling is built and tested. Files:
   instead, since the two sites name them completely differently. Fails
   quietly to an ESPN-only board if FantasyPros cannot be reached; this is
   tested, and it reproduces the old numbers exactly.
+- `commentary.py` — the writer commentary. Pulls each player's latest
+  RotoWire note from ESPN's public player feed, then collects every fantasy
+  article those players are tagged in, reads each article once, and extracts
+  the sentences that name the player. **Design rule: the tool collects what
+  writers said, it does not re-derive their conclusions.** If a reporter has
+  already written "how will the backfield touches be split between Hubbard
+  and Brooks", that sentence beats anything we could infer from a depth
+  chart. Also pulls a few checkable facts (draft year/round, experience,
+  age, team change) from ESPN's season endpoints.
 - `advice.py` — decides who *I* should take, given my roster, who is left,
   and how many picks until my next turn. Snake-draft aware.
 - `draft_assistant.py` + `page.py` — the live draft tool. Opens a local web
@@ -72,9 +81,18 @@ Unverified until draft day: whether ESPN publishes picks to its read API
 they appear, but manual click-to-mark is the primary path and works
 regardless. Do not "fix" this by assuming sync works.
 
-Still missing: no writer/article commentary is being pulled yet — the
-qualitative "why" from fantasy writers is still absent. No start/sit,
-waiver, matchup-aware, or trade logic exists.
+**Facts vote, prose does not.** Structured facts (rookie, changed teams,
+draft round) may nudge the score, and only in the late rounds — the nudge is
+zero above rank 100 and reaches its full 12% by rank 250, because that is
+where VOR stops separating players. Written sentences are shown and never
+scored: "he is not the sleeper everyone thinks" and "he is a sleeper" are
+nearly the same sentence, so a misread can never cost a pick. Changing teams
+is flagged but deliberately unscored — it cuts both ways.
+
+Still missing: start/sit, waiver, matchup-aware and trade logic. Also not
+built yet: sleeper/bust signals derivable from data already on the board
+(low roster% against a good expert rank, one analyst ranking someone far
+above consensus, age cliffs, suspensions).
 
 Rough build order: (1) draft tooling — done, now blended with FantasyPros,
 (2) start/sit and waiver recommendations once the season has live
