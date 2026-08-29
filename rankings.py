@@ -20,16 +20,36 @@ take, given who is already on your roster, lives in advice.py.
 
 from collections import defaultdict
 
+import outside_rankings
+
 
 # How many players to pull from ESPN. 500 covers everyone who will
 # realistically be drafted in a 12-team league (which uses ~168 picks).
 POOL_SIZE = 500
 
 # How much to trust each signal, from 0 to 1. These must add up to 1.
-# VOR is weighted higher because it is tailored to your league's rules;
-# market consensus is a broad average across every league format.
-VOR_WEIGHT = 0.75
-MARKET_WEIGHT = 0.25
+#
+#   VOR      -- our own maths, built from ESPN projections and YOUR league's
+#               rules. Still the anchor, because it is the only signal that
+#               knows this league has two flex spots.
+#   EXPERT   -- what about a hundred fantasy analysts think, via FantasyPros,
+#               using the list that matches this league's scoring.
+#   MARKET   -- what percentage of ESPN leagues have already rostered him.
+#               Crude, but it reflects what real drafters actually do.
+#
+# Expert opinion is worth a lot precisely because it is NOT derived from
+# ESPN: it reacts to news, holdouts and camp reports weeks before ESPN's
+# projections do. It gets less weight than VOR only because it cannot know
+# your league's specific rules.
+VOR_WEIGHT = 0.55
+EXPERT_WEIGHT = 0.30
+MARKET_WEIGHT = 0.15
+
+# Used when FantasyPros could not be reached. The expert share is handed back
+# to the other two in their original proportions, which is exactly the
+# ESPN-only board this tool produced before outside rankings existed.
+VOR_WEIGHT_NO_EXPERTS = 0.75
+MARKET_WEIGHT_NO_EXPERTS = 0.25
 
 
 # ---------------------------------------------------------------------------
@@ -182,27 +202,56 @@ def add_vor(players, levels):
     return players
 
 
-def rank_by(players, key):
+def rank_by(players, key, high_is_better=True):
     """
     Turns a raw number into a rank (1 = best). Ranking rather than averaging
     the raw numbers keeps one signal from drowning out the other just because
     it happens to use bigger units.
+
+    Most of our numbers are "bigger is better" (projection, VOR). An expert
+    ranking is the opposite -- rank 1 IS the best -- hence the switch.
     """
-    ordered = sorted(players, key=lambda pl: pl[key], reverse=True)
+    ordered = sorted(players, key=lambda pl: pl[key], reverse=high_is_better)
     return {id(player): place for place, player in enumerate(ordered, start=1)}
 
 
-def blend(players):
-    """Combines the VOR rank and the market rank into one overall rank."""
+def blend(players, have_experts):
+    """
+    Combines our VOR rank, the expert consensus rank and the market rank into
+    one overall rank.
+
+    If the expert rankings could not be downloaded we fall back to the
+    ESPN-only weighting, so the board still comes out -- just without the
+    outside opinion.
+    """
     vor_ranks = rank_by(players, "vor")
     market_ranks = rank_by(players, "percent_owned")
+    expert_ranks = rank_by(players, "ecr", high_is_better=False) if have_experts else {}
 
     for player in players:
         player["vor_rank"] = vor_ranks[id(player)]
         player["market_rank"] = market_ranks[id(player)]
-        player["blended_score"] = round(
-            VOR_WEIGHT * player["vor_rank"] + MARKET_WEIGHT * player["market_rank"], 2
-        )
+
+        if have_experts:
+            player["expert_rank"] = expert_ranks[id(player)]
+            player["blended_score"] = round(
+                VOR_WEIGHT * player["vor_rank"]
+                + EXPERT_WEIGHT * player["expert_rank"]
+                + MARKET_WEIGHT * player["market_rank"],
+                2,
+            )
+            # How far apart ESPN's maths and the experts are on this player.
+            # Positive means the experts like him MORE than the projections
+            # do, which is usually news ESPN has not caught up with.
+            player["expert_gap"] = player["vor_rank"] - player["expert_rank"]
+        else:
+            player["expert_rank"] = None
+            player["expert_gap"] = None
+            player["blended_score"] = round(
+                VOR_WEIGHT_NO_EXPERTS * player["vor_rank"]
+                + MARKET_WEIGHT_NO_EXPERTS * player["market_rank"],
+                2,
+            )
 
     players.sort(key=lambda pl: pl["blended_score"])
     for place, player in enumerate(players, start=1):
@@ -245,10 +294,14 @@ def add_position_ranks_and_tiers(players):
 # The whole pipeline in one call
 # ---------------------------------------------------------------------------
 
-def build_board(league, pool_size=POOL_SIZE):
+def build_board(league, pool_size=POOL_SIZE, use_experts=True, force_refresh=False):
     """
     Runs everything above and hands back the finished, ranked board plus
     the supporting numbers, tailored to this league's rules.
+
+    Set use_experts=False for a pure ESPN board -- useful for comparing the
+    two, and as an escape hatch if FantasyPros ever starts returning nonsense
+    on a draft night.
     """
     players = fetch_players(league, pool_size)
     if not players:
@@ -257,11 +310,31 @@ def build_board(league, pool_size=POOL_SIZE):
             "Try again closer to the season."
         )
 
+    # Outside opinion. Deliberately best-effort: if this comes back empty we
+    # carry on with the ESPN-only board rather than refusing to draft.
+    experts_info = {"used": False, "scoring": None, "matched": 0, "listed": 0}
+    if use_experts:
+        season = getattr(league, "year", None)
+        scoring, experts = outside_rankings.load_for_league(
+            league, season, force_refresh=force_refresh
+        )
+        experts_info["scoring"] = scoring
+        if experts:
+            stats = outside_rankings.attach(players, experts)
+            experts_info.update(
+                used=True, matched=stats["matched"], listed=stats["experts_listed"]
+            )
+
     starters = count_starters(league, players)
     levels = replacement_levels(players, starters)
 
     players = add_vor(players, levels)
-    players = blend(players)
+    players = blend(players, have_experts=experts_info["used"])
     players = add_position_ranks_and_tiers(players)
 
-    return {"players": players, "starters": starters, "replacement": levels}
+    return {
+        "players": players,
+        "starters": starters,
+        "replacement": levels,
+        "experts": experts_info,
+    }

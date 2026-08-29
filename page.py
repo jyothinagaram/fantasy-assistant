@@ -137,7 +137,8 @@ PAGE_HTML = r"""<!doctype html>
       <table>
         <thead><tr>
           <th>Player</th><th>Pos</th><th>Tm</th>
-          <th class="num">VOR</th><th>Tier</th><th class="num">Own</th><th></th>
+          <th class="num">VOR</th><th class="num">ECR</th><th>Tier</th>
+          <th class="num">Own</th><th></th>
         </tr></thead>
         <tbody id="rows"></tbody>
       </table>
@@ -178,6 +179,17 @@ const api = (path, body) => fetch(path, body ? {
 
 const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const posClass = p => p === "D/ST" ? "DST" : p;
+
+// Where the outside experts have a player. Marked in amber when they cannot
+// agree on him -- a wide range of opinion is worth seeing at a glance, not
+// buried in the reasons.
+function expertCell(p) {
+  if (!p.expert_ranked) return "—";
+  const shaky = p.ecr_spread && p.ecr_spread >= 8;
+  return `<span${shaky ? ' class="hurt"' : ""} title="${
+    p.ecr_best && p.ecr_worst ? `experts ranked him ${Math.round(p.ecr_best)} to ${Math.round(p.ecr_worst)}` : ""
+  }">${Math.round(p.ecr)}</span>`;
+}
 
 function render(state) {
   latest = state;
@@ -226,7 +238,8 @@ function renderPick(state) {
     <div class="who">${esc(top.name)}</div>
     <div class="meta">
       <span class="pos ${posClass(top.position)}">${esc(top.position_rank)}</span>
-      &nbsp;${esc(top.pro_team)} · ${top.projection.toFixed(0)} proj · ${top.vor.toFixed(0)} VOR · ${esc(top.tier)}
+      &nbsp;${esc(top.pro_team)} · ${top.projection.toFixed(0)} proj · ${top.vor.toFixed(0)} VOR · ${esc(top.tier)}${
+        top.expert_ranked ? ` · experts have him ${Math.round(top.ecr)}` : ""}
     </div>
     <ul>${top.reasons.map(r => `<li>${esc(r)}</li>`).join("") || "<li>Best value on the board.</li>"}</ul>
     <div class="cta">
@@ -265,13 +278,14 @@ function renderRows(state, force) {
       <td><span class="pos ${posClass(p.position)}">${esc(p.position_rank)}</span></td>
       <td class="why">${esc(p.pro_team)}</td>
       <td class="num">${p.vor.toFixed(0)}</td>
+      <td class="num why">${expertCell(p)}</td>
       <td class="why">${esc(p.tier)}${p.left_in_tier <= 2 ? ` · ${p.left_in_tier} left` : ""}</td>
       <td class="num why">${p.percent_owned.toFixed(0)}%</td>
       <td><div class="acts">
         <button class="mine" onclick="pick(${p.player_id}, true)">Mine</button>
         <button onclick="pick(${p.player_id}, false)">Taken</button>
       </div></td>
-    </tr>`).join("") || `<tr><td colspan="7" class="foot">No players match.</td></tr>`;
+    </tr>`).join("") || `<tr><td colspan="8" class="foot">No players match.</td></tr>`;
 }
 
 function renderRoster(state) {

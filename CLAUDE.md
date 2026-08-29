@@ -46,10 +46,18 @@ The draft tooling is built and tested. Files:
   so league IDs never need to be pasted into config. Falls back to
   `ESPN_LEAGUE_ID` in `.env` if that lookup fails.
 - `rankings.py` — the value engine. Computes value over replacement (VOR)
-  from ESPN projections and the league's own roster rules, blends it 75/25
-  with roster percentage, and groups players into tiers. Everything is
-  per-league: ESPN returns different projections for a full-PPR league than
-  a half-PPR one, so the boards genuinely differ.
+  from ESPN projections and the league's own roster rules, then blends three
+  signals into one board: VOR 55%, FantasyPros expert consensus 30%, ESPN
+  roster percentage 15%. Groups players into tiers (tiers stay VOR-driven).
+  Everything is per-league: ESPN returns different projections for a
+  full-PPR league than a half-PPR one, so the boards genuinely differ.
+- `outside_rankings.py` — the first non-ESPN source. Scrapes FantasyPros
+  expert consensus rankings (ECR) for the scoring format that matches the
+  league (PPR / half / standard), caches them under `cache/` for 12 hours,
+  and matches them to ESPN players by name — with defenses matched by team
+  instead, since the two sites name them completely differently. Fails
+  quietly to an ESPN-only board if FantasyPros cannot be reached; this is
+  tested, and it reproduces the old numbers exactly.
 - `advice.py` — decides who *I* should take, given my roster, who is left,
   and how many picks until my next turn. Snake-draft aware.
 - `draft_assistant.py` + `page.py` — the live draft tool. Opens a local web
@@ -64,15 +72,20 @@ Unverified until draft day: whether ESPN publishes picks to its read API
 they appear, but manual click-to-mark is the primary path and works
 regardless. Do not "fix" this by assuming sync works.
 
-Still missing: every signal still comes from ESPN itself, so no outside
-rankings (FantasyPros and the like) and no writer/article commentary are
-being pulled yet. No start/sit, waiver, matchup-aware, or trade logic
-exists.
+Still missing: no writer/article commentary is being pulled yet — the
+qualitative "why" from fantasy writers is still absent. No start/sit,
+waiver, matchup-aware, or trade logic exists.
 
-Rough build order: (1) draft tooling — done, still needs non-ESPN sources,
+Rough build order: (1) draft tooling — done, now blended with FantasyPros,
 (2) start/sit and waiver recommendations once the season has live
 rosters/matchups, (3) advanced matchup- and trade-aware recommendations
 once the basics work.
+
+Known library quirk: `espn_api` keeps scoring rules in a shared dictionary,
+so connecting to two leagues in one process makes the first one report the
+second one's reception value. Nothing does that today (one league per run).
+Anything that touches two leagues at once must read
+`leagues.describe_rules()` right after connecting and remember the answer.
 
 ## Leagues
 

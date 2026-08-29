@@ -33,6 +33,26 @@ FILLER_ROUNDS_FROM_END = 2
 # telling them apart. This lets raw projected points break the tie.
 DEPTH_TIEBREAK = 0.02
 
+# How far the outside experts are allowed to move a player, at most: 30% up
+# or down. They get a real say but never the final word, because they are
+# ranking a generic league and we are drafting YOURS -- only our own VOR
+# knows this league has two flex spots. Everything about tiers and scarcity
+# stays driven by VOR for the same reason.
+EXPERT_TILT = 0.30
+
+# A disagreement of this many ranks counts as total disagreement. Beyond it
+# the adjustment stops growing, so one weird outlier cannot run away with the
+# board.
+EXPERT_TILT_SPAN = 60
+
+# Only mention the experts in the reasons when they differ from ESPN by more
+# than this many spots -- below that it is noise, not insight.
+EXPERT_NOTE_GAP = 20
+
+# How much expert disagreement counts as "nobody knows what this guy is".
+# FantasyPros publishes the standard deviation of every analyst's rank.
+EXPERT_SPREAD_NOTE = 8.0
+
 
 # ---------------------------------------------------------------------------
 # What your roster is supposed to look like
@@ -286,6 +306,28 @@ def tier_scarcity(player, available, picks_until_next):
     return {"left_in_tier": len(same_tier), "drop_to_next_tier": max(0.0, drop), "risk": risk}
 
 
+def expert_adjustment(player):
+    """
+    A gentle nudge up or down based on how the outside experts see a player
+    compared with ESPN's projections.
+
+    Returns a multiplier near 1. It is capped deliberately: where ESPN and a
+    hundred analysts disagree, the analysts are usually the ones who have
+    heard about the holdout or the camp report -- but they are ranking a
+    generic league, so they never get to overrule your league's own maths
+    outright.
+
+    Returns exactly 1.0 when there is no expert data, which is what makes the
+    whole thing safe to fail.
+    """
+    gap = player.get("expert_gap")
+    if gap is None:
+        return 1.0
+
+    tilt = max(-1.0, min(1.0, gap / float(EXPERT_TILT_SPAN)))
+    return 1.0 + EXPERT_TILT * tilt
+
+
 def bye_clash(player, roster):
     """How many players you already have share this player's bye week."""
     if not player.get("bye_week"):
@@ -351,6 +393,27 @@ def explain(player, need, scarcity, open_slots, clash, turn):
     if need < 0.6 and position not in FILLER_POSITIONS:
         reasons.append(f"You are already deep at {position}.")
 
+    # What the outside experts add that ESPN cannot: a second opinion, and an
+    # honest admission of how uncertain that opinion is.
+    gap = player.get("expert_gap")
+    if gap is not None and abs(gap) >= EXPERT_NOTE_GAP:
+        if gap > 0:
+            reasons.append(
+                f"Experts rank him {int(gap)} spots higher than ESPN's projections do."
+            )
+        else:
+            reasons.append(
+                f"Experts rank him {int(-gap)} spots lower than ESPN's projections do."
+            )
+
+    spread = player.get("ecr_spread")
+    best, worst = player.get("ecr_best"), player.get("ecr_worst")
+    if spread and spread >= EXPERT_SPREAD_NOTE and best and worst:
+        reasons.append(
+            f"Experts cannot agree on him -- ranked anywhere from "
+            f"{int(best)} to {int(worst)}."
+        )
+
     if player["injury_status"] not in ("ACTIVE", "NORMAL"):
         reasons.append(f"Carrying a {player['injury_status'].lower()} tag.")
 
@@ -404,6 +467,8 @@ def recommend(board, drafted_ids, my_roster, plan, draft_slot, picks_made, limit
         # Once VOR bottoms out at zero, raw projected points is what still
         # separates one bench option from another.
         score += DEPTH_TIEBREAK * player["projection"] * need
+        # Then let the outside experts nudge the whole thing up or down.
+        score *= expert_adjustment(player)
         if clash >= 2:
             score -= 4
 
