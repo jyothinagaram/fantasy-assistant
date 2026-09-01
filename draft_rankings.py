@@ -107,11 +107,22 @@ def write_csv(players, league_info):
         # are, and how that compares with ESPN's own numbers.
         "ecr", "ecr_pos_rank", "ecr_best", "ecr_worst", "ecr_spread",
         "expert_rank", "expert_gap", "expert_ranked",
+        # Where the three sources disagree -- sort on this column to pull all
+        # the bargains, or all the traps, to the top.
+        "signal", "signal_why",
     ]
+    rows = []
+    for player in players:
+        row = dict(player)
+        found = player.get("signals") or []
+        row["signal"] = " + ".join(s["label"] for s in found)
+        row["signal_why"] = " ".join(s["why"] for s in found)
+        rows.append(row)
+
     with open(path, "w", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=columns, extrasaction="ignore")
         writer.writeheader()
-        writer.writerows(players)
+        writer.writerows(rows)
 
     print(f"\nFull board ({len(players)} players) saved to: {path}")
     print("Open it in Excel or Numbers to sort and filter during your draft.")

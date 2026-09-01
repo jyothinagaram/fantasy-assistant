@@ -37,6 +37,26 @@ from page import PAGE_HTML
 PORT = int(os.getenv("DRAFT_ASSISTANT_PORT", "8770"))
 SYNC_SECONDS = 5
 
+# How far down the board the page can see. It has to cover a whole draft --
+# twelve teams times fourteen rounds is 168 players -- plus enough beyond
+# that to search for somebody and to spot a value worth waiting on.
+BOARD_DEPTH = 220
+
+# How many of those carry their full write-up. Every article sentence and
+# injury paragraph for 220 players is a megabyte of JSON, re-sent every two
+# and a half seconds, and you only ever read the write-up for players you are
+# actually choosing between. The rest travel light.
+DETAIL_DEPTH = 40
+
+# Dropped from the light rows. The short note stays -- it is one line and it
+# is the bit worth seeing at a glance.
+HEAVY_FIELDS = ("note_detail", "quotes", "articles", "facts")
+
+
+def slim(player):
+    """The same player, without the reading material."""
+    return {k: v for k, v in player.items() if k not in HEAVY_FIELDS}
+
 
 class DraftState:
     """
@@ -142,8 +162,13 @@ class DraftState:
             plan=self.plan,
             draft_slot=slot,
             picks_made=picks_made,
-            limit=50,
+            limit=BOARD_DEPTH,
         )
+
+        rows = [
+            row if place < DETAIL_DEPTH else slim(row)
+            for place, row in enumerate(result["recommendations"])
+        ]
 
         return {
             "league": {
@@ -156,7 +181,7 @@ class DraftState:
             "picks_made": picks_made,
             "turn": result["turn"],
             "open_slots": result["open_slots"],
-            "recommendations": result["recommendations"],
+            "recommendations": rows,
             "my_roster": sorted(my_roster, key=lambda p: p["overall_rank"]),
             "roster_plan": self.plan,
             "sync": {"status": self.sync_status, "live": self.sync_live},

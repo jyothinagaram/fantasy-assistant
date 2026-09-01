@@ -67,6 +67,18 @@ The draft tooling is built and tested. Files:
   and Brooks", that sentence beats anything we could infer from a depth
   chart. Also pulls a few checkable facts (draft year/round, experience,
   age, team change) from ESPN's season endpoints.
+- `signals.py` — flags the players the three sources disagree about, so a
+  bargain or a trap is visible while scanning rather than only after doing
+  the arithmetic. Adds `value`, `overpriced` and `experts split` badges. It
+  reports disagreement, never a prediction, and reads no prose. Three rules
+  it exists to enforce, each found in the real board rather than guessed:
+  compare **within a position** (our VOR and the FantasyPros overall list use
+  different positional baselines, so a naive comparison called nearly every
+  QB overrated and nearly every TE too); **ignore roster% above 99%** (34 of
+  the top 150 sit there, so the gaps are rounding, not opinion); and judge
+  expert disagreement **against a player's neighbours** (measured naively the
+  most agreed-upon player on the board came out the most volatile, because
+  half a rank of spread looks huge next to a rank of 1).
 - `advice.py` — decides who *I* should take, given my roster, who is left,
   and how many picks until my next turn. Snake-draft aware.
 - `draft_assistant.py` + `page.py` — the live draft tool. Opens a local web
@@ -81,6 +93,11 @@ Unverified until draft day: whether ESPN publishes picks to its read API
 they appear, but manual click-to-mark is the primary path and works
 regardless. Do not "fix" this by assuming sync works.
 
+The live page sends 220 players deep, enough to cover a whole 12x14 draft
+and to search for anyone, but the full write-up (articles, quotes, long
+injury notes) only travels for the top 40. Sending all of it for all of them
+was a megabyte of JSON every 2.5 seconds for reading material nobody opens.
+
 **Facts vote, prose does not.** Structured facts (rookie, changed teams,
 draft round) may nudge the score, and only in the late rounds — the nudge is
 zero above rank 100 and reaches its full 12% by rank 250, because that is
@@ -89,10 +106,10 @@ scored: "he is not the sleeper everyone thinks" and "he is a sleeper" are
 nearly the same sentence, so a misread can never cost a pick. Changing teams
 is flagged but deliberately unscored — it cuts both ways.
 
-Still missing: start/sit, waiver, matchup-aware and trade logic. Also not
-built yet: sleeper/bust signals derivable from data already on the board
-(low roster% against a good expert rank, one analyst ranking someone far
-above consensus, age cliffs, suspensions).
+Still missing: start/sit, waiver, matchup-aware and trade logic. Sleeper and
+bust signals are now built (`signals.py`), but only the ones that come from
+source disagreement — age cliffs and suspensions are still not modelled,
+because neither is in the data the board already pulls.
 
 Rough build order: (1) draft tooling — done, now blended with FantasyPros,
 (2) start/sit and waiver recommendations once the season has live

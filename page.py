@@ -85,6 +85,24 @@ PAGE_HTML = r"""<!doctype html>
   .tag.second_year { background:#1d3050; color:#8fc0ff; }
   .tag.injury_watch { background:#4a3410; color:#ffc46b; }
 
+  /* Source-disagreement badges. Deliberately louder than the situation tags
+     above, because these are the ones you are scanning the list for. They
+     say where the three sources disagree -- never a prediction. */
+  .sig {
+    display:inline-block; font-size:10px; font-weight:800; letter-spacing:.05em;
+    padding:2px 7px; border-radius:4px; margin-left:6px; vertical-align:middle;
+    text-transform:uppercase; cursor:help; white-space:nowrap;
+  }
+  .sig.value      { background:#0f7a4a; color:#eafff2; }
+  .sig.overpriced { background:#8c2f2f; color:#ffeaea; }
+  .sig.split      { background:#7a5a12; color:#fff2d4; }
+
+  /* The same three, spelled out under the recommendation. */
+  .sigwhy { margin:10px 0 0; padding:0; list-style:none; }
+  .sigwhy li { display:flex; gap:9px; align-items:flex-start; margin-top:6px;
+    font-size:12.5px; color:#b9c5d8; line-height:1.45; }
+  .sigwhy .sig { margin-left:0; flex:none; margin-top:1px; }
+
   .rownote {
     font-size:11.5px; color:#7f8ca3; font-style:italic; margin-top:2px;
     display:-webkit-box; -webkit-line-clamp:1; -webkit-box-orient:vertical;
@@ -93,6 +111,20 @@ PAGE_HTML = r"""<!doctype html>
 
   /* --- setup nudge --- */
   .setup { padding:16px 20px; margin-bottom:16px; border-left:4px solid var(--warn); }
+
+  /* The signal filter sits apart from the position chips so it is obvious
+     they are two separate questions: which position, and which players the
+     sources argue about. */
+  .chipgap { width:1px; align-self:stretch; background:var(--line); margin:0 4px; }
+  .sigchip {
+    background:#0f141d; border:1px solid var(--line); color:var(--dim);
+    border-radius:999px; padding:6px 13px; font-size:12.5px; font-weight:600;
+    cursor:pointer;
+  }
+  .sigchip:hover { color:#dfe7f3; }
+  .sigchip.on[data-sig="ALL"]   { background:#243044; border-color:#3a4a66; color:#e8eefb; }
+  .sigchip.on[data-sig="value"] { background:#0f7a4a; border-color:#0f7a4a; color:#eafff2; }
+  .sigchip.on[data-sig="risk"]  { background:#8c2f2f; border-color:#8c2f2f; color:#ffeaea; }
 
   /* --- player table --- */
   .toolbar { display:flex; gap:8px; padding:12px 14px; border-bottom:1px solid var(--line); flex-wrap:wrap; }
@@ -168,6 +200,10 @@ PAGE_HTML = r"""<!doctype html>
         <button class="chip" data-pos="TE">TE</button>
         <button class="chip" data-pos="K">K</button>
         <button class="chip" data-pos="D/ST">DST</button>
+        <span class="chipgap"></span>
+        <button class="sigchip on" data-sig="ALL">Everyone</button>
+        <button class="sigchip" data-sig="value">Value</button>
+        <button class="sigchip" data-sig="risk">Risk</button>
       </div>
       <table>
         <thead><tr>
@@ -197,7 +233,7 @@ PAGE_HTML = r"""<!doctype html>
 </div>
 
 <script>
-let posFilter = "ALL", search = "", latest = null;
+let posFilter = "ALL", sigFilter = "ALL", search = "", latest = null;
 
 // If the assistant stops answering -- the terminal window got closed, the
 // laptop went to sleep -- say so loudly. Silently showing a board that
@@ -260,6 +296,22 @@ function tags(p) {
     .join("");
 }
 
+// Where the three sources disagree about him. Hovering explains which source
+// is the odd one out; the full sentence also appears under the recommendation.
+function sigs(p) {
+  return (p.signals || [])
+    .map(sg => `<span class="sig ${sg.tag}" title="${esc(sg.why)}">${esc(sg.label)}</span>`)
+    .join("");
+}
+
+function sigWhy(p) {
+  const list = p.signals || [];
+  if (!list.length) return "";
+  return `<ul class="sigwhy">${list.map(sg =>
+    `<li><span class="sig ${sg.tag}">${esc(sg.label)}</span><span>${esc(sg.why)}</span></li>`
+  ).join("")}</ul>`;
+}
+
 // The written note, shown and never scored. If a writer is being sarcastic
 // about a player, you will spot it in a second and the tool never will --
 // so the tool does not try.
@@ -304,13 +356,14 @@ function renderPick(state) {
 
   box.innerHTML = `
     <div class="status ${onClock ? "now" : ""}">${esc(status)}</div>
-    <div class="who">${esc(top.name)}${tags(top)}</div>
+    <div class="who">${esc(top.name)}${sigs(top)}${tags(top)}</div>
     <div class="meta">
       <span class="pos ${posClass(top.position)}">${esc(top.position_rank)}</span>
       &nbsp;${esc(top.pro_team)} · ${top.projection.toFixed(0)} proj · ${top.vor.toFixed(0)} VOR · ${esc(top.tier)}${
         top.expert_ranked ? ` · experts have him ${Math.round(top.ecr)}` : ""}
     </div>
     <ul>${top.reasons.map(r => `<li>${esc(r)}</li>`).join("") || "<li>Best value on the board.</li>"}</ul>
+    ${sigWhy(top)}
     ${writersBlock(top)}
     <div class="cta">
       <button class="mine" onclick="pick(${top.player_id}, true)">I drafted him</button>
@@ -326,13 +379,20 @@ function renderPick(state) {
 let lastRowsKey = "";
 
 function renderRows(state, force) {
-  const key = [state.picks_made, state.draft_slot, posFilter, search].join("|");
+  const key = [state.picks_made, state.draft_slot, posFilter, sigFilter, search].join("|");
   if (!force && key === lastRowsKey) return;
   lastRowsKey = key;
 
   const q = search.toLowerCase();
+  const has = (p, tag) => (p.signals || []).some(sg => sg.tag === tag);
+  const matchesSignal = p =>
+    sigFilter === "ALL" ? true :
+    sigFilter === "value" ? has(p, "value") :
+    (has(p, "overpriced") || has(p, "split"));
+
   const rows = state.recommendations.filter(p =>
     (posFilter === "ALL" || p.position === posFilter) &&
+    matchesSignal(p) &&
     (!q || p.name.toLowerCase().includes(q))
   );
 
@@ -342,7 +402,7 @@ function renderRows(state, force) {
         <div class="nm">${esc(p.name)}
           ${p.injury_status !== "ACTIVE" && p.injury_status !== "NORMAL"
             ? `<span class="hurt">${esc(p.injury_status)}</span>` : ""}
-          ${tags(p)}
+          ${sigs(p)}${tags(p)}
         </div>
         ${p.reasons.length ? `<div class="why">${esc(p.reasons[0])}</div>` : ""}
         ${p.note ? `<div class="rownote" title="${esc(p.note_detail || p.note)}">${esc(p.note)}</div>` : ""}
@@ -357,7 +417,8 @@ function renderRows(state, force) {
         <button class="mine" onclick="pick(${p.player_id}, true)">Mine</button>
         <button onclick="pick(${p.player_id}, false)">Taken</button>
       </div></td>
-    </tr>`).join("") || `<tr><td colspan="8" class="foot">No players match.</td></tr>`;
+    </tr>`).join("") || `<tr><td colspan="8" class="foot">No players match${
+      sigFilter === "ALL" ? "" : " — the sources agree about everyone left here"}.</td></tr>`;
 }
 
 function renderRoster(state) {
@@ -406,6 +467,12 @@ document.querySelectorAll(".chip").forEach(chip => chip.onclick = () => {
   document.querySelectorAll(".chip").forEach(c => c.classList.remove("on"));
   chip.classList.add("on");
   posFilter = chip.dataset.pos;
+  if (latest) renderRows(latest, true);
+});
+document.querySelectorAll(".sigchip").forEach(chip => chip.onclick = () => {
+  document.querySelectorAll(".sigchip").forEach(c => c.classList.remove("on"));
+  chip.classList.add("on");
+  sigFilter = chip.dataset.sig;
   if (latest) renderRows(latest, true);
 });
 

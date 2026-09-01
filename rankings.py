@@ -21,6 +21,7 @@ take, given who is already on your roster, lives in advice.py.
 from collections import defaultdict
 
 import commentary
+import signals
 import outside_rankings
 
 
@@ -336,6 +337,10 @@ def build_board(league, pool_size=POOL_SIZE, use_experts=True, force_refresh=Fal
 
     # Commentary comes last, because it needs the finished ranking to know
     # which players are deep enough down the board to be worth reading about.
+    # Which players the three sources disagree about. Pure arithmetic on
+    # numbers already on the board, so it costs nothing and cannot fail.
+    signal_info = signals.attach(players)
+
     notes_info = {"used": False, "looked_up": 0, "with_note": 0, "with_archetype": 0}
     if use_commentary:
         season = getattr(league, "year", None)
@@ -348,4 +353,5 @@ def build_board(league, pool_size=POOL_SIZE, use_experts=True, force_refresh=Fal
         "replacement": levels,
         "experts": experts_info,
         "commentary": notes_info,
+        "signals": signal_info,
     }
