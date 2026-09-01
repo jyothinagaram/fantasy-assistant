@@ -291,26 +291,58 @@ def surname(full_name):
     return parts[-1]
 
 
+def spellings(name):
+    """
+    One name, written the way writers actually write it.
+
+    Suffixes are the problem: the board says "Marvin Harrison Jr." but an
+    article may drop the full stop, so we accept both.
+    """
+    return re.escape(name.rstrip(".")) + (r"\.?" if name.endswith(".") else "")
+
+
 def build_name_patterns(players):
     """
     How to spot each player in prose.
 
-    Full name always works. A bare surname is only safe when nobody else in
-    the pool shares it -- there are three Browns on this board, and quoting a
-    sentence about the wrong one is worse than quoting nothing.
+    Full name always works. A bare surname is only safe when it points at
+    exactly one player and nothing else. Two ways it can betray us:
+
+      1. Someone else on the board shares it -- there are three Browns here,
+         and quoting a sentence about the wrong one is worse than quoting
+         nothing.
+      2. It is somebody else's *first* name. "Chase" is Ja'Marr Chase's
+         surname, but it is also how every sentence about Chase Brown
+         starts -- so a bare "Chase" pulled Chase Brown's write-up onto
+         Ja'Marr Chase's card. Same trap for Harrison, Hunter, Jackson,
+         James, Mason and Tyson.
+
+    When a surname fails either test we simply require the full name. The
+    cost is a few missed sentences; the alternative is confidently showing
+    you the wrong player's outlook while you are on the clock.
     """
     surnames = {}
+    given_names = set()
     for player in players:
-        surnames.setdefault(surname(player["name"]).lower(), []).append(player)
+        last = surname(player["name"])
+        surnames.setdefault(last.lower(), []).append(player)
+        for part in player["name"].split():
+            if part != last:
+                given_names.add(part.lower())
 
     patterns = {}
     for player in players:
-        names = [re.escape(player["name"])]
+        names = [spellings(player["name"])]
         last = surname(player["name"])
-        if last and len(surnames.get(last.lower(), [])) == 1 and len(last) > 3:
-            names.append(re.escape(last))
+        unique = len(surnames.get(last.lower(), [])) == 1
+        if last and unique and len(last) > 3 and last.lower() not in given_names:
+            names.append(spellings(last))
+        # Lookarounds rather than \b: a name ending in a full stop ("Marvin
+        # Harrison Jr.") can never satisfy a trailing \b, because the next
+        # character is a space rather than a letter. That silently hid every
+        # sentence about him.
         patterns[player["player_id"]] = re.compile(
-            r"\b(?:%s)\b" % "|".join(names), re.IGNORECASE
+            r"(?<!\w)(?:%s)(?!\w)" % "|".join(names), re.IGNORECASE
         )
     return patterns
 
