@@ -22,6 +22,7 @@ warnings.filterwarnings("ignore")
 
 import leagues
 import lineup
+import status
 
 
 # How big a scoring difference has to be before it is worth telling you to
@@ -45,6 +46,11 @@ def parse_arguments():
         action="store_true",
         help="Skip FantasyPros and use ESPN's projections alone",
     )
+    parser.add_argument(
+        "--lock",
+        action="store_true",
+        help="Pre-kickoff check: what is about to lock, and who is still in doubt",
+    )
     return parser.parse_args()
 
 
@@ -65,11 +71,132 @@ def format_player(player, show_slot=None):
     expert_text = f"{expert:5.1f}" if expert is not None else "    -"
     opponent = player.get("opponent") or ""
 
+    countdown = player.get("locks_in") or ""
+
     return (
         f"  {slot}{player['name']:<22} {player['position']:<4} "
         f"{opponent:<8} {player['score']:>6.1f}  "
-        f"(ESPN {espn:>5.1f} | experts {expert_text})  {flag}"
+        f"(ESPN {espn:>5.1f} | experts {expert_text})  "
+        f"{countdown:<11} {flag}"
     )
+
+
+def print_writer_note(player, indent=4):
+    """
+    What the writers actually said, word for word.
+
+    Deliberately never summarised or scored -- "he is not the sleeper
+    everyone thinks" and "he is a sleeper" are nearly the same sentence, and
+    a misread must never be able to cost you a lineup. You read it and you
+    decide.
+    """
+    pad = " " * indent
+    headline = player.get("note_headline")
+    story = player.get("note_story")
+    if not headline and not story:
+        return
+
+    print(f"{pad}writers say:")
+    if headline:
+        print(f"{pad}  \"{wrap(headline, indent + 4)}\"")
+    if story and story != headline:
+        print(f"{pad}  {wrap(story, indent + 2)}")
+    published = player.get("note_published")
+    if published:
+        print(f"{pad}  -- RotoWire, {published}")
+
+
+def wrap(text, indent, width=88):
+    """Folds a long sentence to the terminal, keeping it readable."""
+    words, lines, current = text.split(), [], ""
+    limit = max(30, width - indent)
+    for word in words:
+        if len(current) + len(word) + 1 > limit:
+            lines.append(current)
+            current = word
+        else:
+            current = f"{current} {word}".strip()
+    if current:
+        lines.append(current)
+    return ("\n" + " " * indent).join(lines)
+
+
+def print_lock_check(board, rules):
+    """
+    The pre-kickoff view: what is about to lock, and who is still in doubt.
+
+    Sorted by kickoff rather than by position, because on a Sunday morning
+    the only ordering that matters is which decision expires first. Players
+    already locked are listed too, but plainly marked -- knowing a decision
+    is gone is worth as much as knowing one is open, and it stops you
+    hunting for a move you can no longer make.
+    """
+    print()
+    print("=" * 78)
+    print(f"  {board['league_name']}  --  Week {board['week']}  --  LOCK CHECK")
+    print("=" * 78)
+
+    starters = sorted(
+        board["starters"],
+        key=lambda p: (p.get("kickoff") is None, p.get("kickoff") or 0),
+    )
+
+    urgent = []
+    for player in starters:
+        uncertain = (player.get("injury_status") or "ACTIVE") in status.WORTH_A_NOTE
+        line = format_player(player)
+        print(line)
+
+        practice = status.describe_practice(player)
+        if practice:
+            print(f"      {practice}")
+        if uncertain and not player.get("locked"):
+            urgent.append(player)
+
+    # Anyone on the bench who is now worth more than a starter who is still
+    # unlocked -- the actual decision you might need to make in a hurry.
+    print()
+    swaps = [
+        (out_player, in_player)
+        for out_player, in_player in board["changes"]
+        if not out_player.get("locked") and not in_player.get("locked")
+    ]
+    blocked = [
+        (out_player, in_player)
+        for out_player, in_player in board["changes"]
+        if out_player.get("locked") or in_player.get("locked")
+    ]
+
+    if swaps:
+        print("  MOVES STILL AVAILABLE")
+        for out_player, in_player in swaps:
+            print(
+                f"    BENCH {out_player['name']} ({out_player['score']:.1f})"
+                f"  ->  START {in_player['name']} ({in_player['score']:.1f})"
+                f"   [{in_player.get('locks_in')}]"
+            )
+        print()
+
+    if blocked:
+        print("  TOO LATE -- one side of these is already locked")
+        for out_player, in_player in blocked:
+            print(f"    {out_player['name']} -> {in_player['name']}")
+        print()
+
+    if urgent:
+        print("  STILL IN DOUBT -- decide before these lock")
+        for player in urgent:
+            print(
+                f"    {player['name']} ({player['position']}) "
+                f"-- {player.get('injury_status')} -- locks {player.get('locks_in')}"
+            )
+            practice = status.describe_practice(player)
+            if practice:
+                print(f"      {practice}")
+            print_writer_note(player, indent=6)
+        print()
+    else:
+        print("  Nothing in doubt among your unlocked starters.\n")
 
 
 def print_board(board, rules):
@@ -129,7 +256,8 @@ def print_board(board, rules):
         notes = [
             note
             for note in lineup.reasons(player)
-            if "confirm before kickoff" in note
+            if note.startswith("questionable")
+            or "practice report" in note
             or "experts split" in note
             or "moved him down" in note
             or "ESPN higher than experts" in note
@@ -140,9 +268,11 @@ def print_board(board, rules):
     if watch:
         print("  WATCH THESE STARTERS")
         for player, notes in watch:
-            print(f"    {player['name']} ({player['position']})")
+            lock = player.get("locks_in") or ""
+            print(f"    {player['name']} ({player['position']})  locks {lock}")
             for note in notes:
                 print(f"      - {note}")
+            print_writer_note(player, indent=6)
         print()
 
     # -- bench ------------------------------------------------------------
@@ -199,7 +329,10 @@ def main():
             print(f"\nCould not build a board for {entry['name']}: {error}")
             continue
 
-        print_board(board, rules)
+        if arguments.lock:
+            print_lock_check(board, rules)
+        else:
+            print_board(board, rules)
 
     print()
 

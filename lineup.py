@@ -168,9 +168,16 @@ def score(players, week):
         status = player.get("injury_status") or "ACTIVE"
         multiplier = INJURY_MULTIPLIERS.get(status, 1.0)
 
+        # For questionable players only, `status.py` may have found a practice
+        # report -- which says whether this particular questionable player is
+        # better or worse off than the average one the projections assumed.
+        # It is 1.0 when there is no report, so this is a no-op without it.
+        practice = player.get("practice_multiplier") or 1.0
+
         player["blended_projection"] = round(blended, 2)
         player["injury_multiplier"] = multiplier
-        player["score"] = round(blended * multiplier, 2)
+        player["practice_multiplier"] = practice
+        player["score"] = round(blended * multiplier * practice, 2)
         player["score_basis"] = basis
         player["on_bye"] = on_bye
         player["can_play"] = not on_bye and status not in CANNOT_PLAY
@@ -316,7 +323,22 @@ def reasons(player):
     if status in CANNOT_PLAY:
         notes.append(f"{status.replace('_', ' ').lower()} -- cannot play")
     elif status == "QUESTIONABLE":
-        notes.append("questionable -- confirm before kickoff")
+        import status as game_status
+
+        practice = game_status.describe_practice(player)
+        if practice:
+            # The practice report is the useful half of "questionable".
+            # Coaches list players questionable partly to keep the other team
+            # guessing; whether he actually practised is much harder to fake.
+            notes.append(f"questionable -- {practice}")
+        else:
+            notes.append("questionable -- confirm before kickoff")
+
+        moved = player.get("practice_multiplier") or 1.0
+        if moved < 1.0:
+            notes.append(f"scored down {(1 - moved) * 100:.0f}% on that practice report")
+        elif moved > 1.0:
+            notes.append(f"scored up {(moved - 1) * 100:.0f}% on that practice report")
 
     gap = player.get("source_gap")
     if gap is not None and abs(gap) >= 2.0:
@@ -350,9 +372,17 @@ def build(league, team_id, week, season, use_experts=True, force_refresh=False):
     on whether the expert numbers actually arrived -- so a quiet failure to
     reach FantasyPros can be reported rather than hidden.
     """
+    import status as game_status
     import weekly_rankings
 
     players = roster(league, team_id, week)
+
+    # Kickoff times and practice reports, before scoring -- the practice
+    # report feeds into the score, so it has to arrive first.
+    try:
+        game_status.attach(players, season, week)
+    except Exception:
+        pass  # the countdown and the notes are a bonus, not the board
 
     expert_summary = None
     scoring = None

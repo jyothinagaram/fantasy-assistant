@@ -111,6 +111,19 @@ The draft tooling is built and tested. Files:
   arrangement, tried one at a time), including 200 random rosters. The solver
   is the one piece that can be quietly wrong: a lineup leaving half a point
   on the table looks completely normal in the output.
+- `status.py` — how real that "Questionable" is, and when the decision
+  expires. Two jobs. (1) **Severity.** "Questionable" is a weak word doing
+  several jobs — some players are genuinely fifty-fifty, some are listed that
+  way so the other team has to game-plan for both. The designation cannot
+  separate those; practice participation largely can, and RotoWire publishes
+  it in a formulaic sentence. So the practice level is lifted out as a fact
+  and allowed to vote; the coach quotes around it are shown verbatim and
+  never scored. (2) **Lock times.** Each player locks when HIS game kicks
+  off, so a Thursday player is decided before most of the week's news exists.
+  One scoreboard call covers all 16 games.
+- `test_status.py` — tests the practice reader, which is the riskiest code in
+  the project: everywhere else the tool reads numbers, here it reads English.
+  Mostly tests sentences that must NOT match.
 - `check_connection.py` — original sanity check.
 
 Unverified until draft day: whether ESPN publishes picks to its read API
@@ -123,7 +136,15 @@ and to search for anyone, but the full write-up (articles, quotes, long
 injury notes) only travels for the top 40. Sending all of it for all of them
 was a megabyte of JSON every 2.5 seconds for reading material nobody opens.
 
-**Facts vote, prose does not.** Structured facts (rookie, changed teams,
+**Facts vote, prose does not.** In-season this rule is what lets the tool
+read a practice report without reading a writer's opinion: "was a full
+participant in Friday's practice" is formulaic enough to be a fact, so it
+votes; "all signs point to him being out there" is an opinion, so it is
+shown and never scored. `status.py` also refuses to guess — a sentence it
+cannot parse yields no report, which is a no-op, so an unreadable note costs
+the extra insight and never costs a lineup.
+
+On the draft board, structured facts (rookie, changed teams,
 draft round) may nudge the score, and only in the late rounds — the nudge is
 zero above rank 100 and reaches its full 12% by rank 250, because that is
 where VOR stops separating players. Written sentences are shown and never
@@ -131,11 +152,22 @@ scored: "he is not the sleeper everyone thinks" and "he is a sleeper" are
 nearly the same sentence, so a misread can never cost a pick. Changing teams
 is flagged but deliberately unscored — it cuts both ways.
 
-Start/sit is now built (`weekly_rankings.py`, `lineup.py`, `start_sit.py`).
+Start/sit is now built (`weekly_rankings.py`, `lineup.py`, `status.py`,
+`start_sit.py`), including the pre-kickoff check: `start_sit.py --lock`.
 Still missing: waiver, matchup-aware and trade logic. Sleeper and bust
 signals are built (`signals.py`), but only the ones that come from source
 disagreement — age cliffs and suspensions are still not modelled, because
 neither is in the data the board already pulls.
+
+**Questionable players are not discounted twice.** ESPN and FantasyPros have
+already priced the average questionable player into the projections we
+average, so a further injury haircut would charge him twice for the same
+ankle — `INJURY_MULTIPLIERS["QUESTIONABLE"]` is deliberately 1.0. What is
+NOT priced in is how *this* questionable player differs from that average,
+which is what the practice multipliers in `status.py` express: they are
+relative to the typical questionable player, not to a healthy one. That is
+why full participation is only +10% (he must never end up worth more than
+he would be healthy) while no practice at all is -45%.
 
 Rough build order: (1) draft tooling — done, blended with FantasyPros,
 (2) start/sit — done, (3) waiver and pickup/drop recommendations,
@@ -173,6 +205,11 @@ Read from ESPN on 2026-09-09, not assumed. Notes that matter:
   on it.
 - `acquisitionBudgetSpent` per team is readable, so the tool always knows
   what every opponent has left to bid.
+- ESPN's league-wide injuries feed
+  (`site.web.api.espn.com/.../nfl/injuries`) is NOT worth using: its comment
+  fields just echo the status (`longComment: "questionable"`). The useful
+  text is the RotoWire note on the player overview endpoint instead. Also
+  note `site.api.espn.com` returns 403 — use `site.web.api.espn.com`.
 - Bid history exists (`bidAmount` on every transaction) but as of Week 1
   there were only 6 real claims across all three leagues, all $1–$2. FAAB
   recommendations have to start on a heuristic and calibrate as the season
