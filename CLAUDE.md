@@ -86,6 +86,31 @@ The draft tooling is built and tested. Files:
   `.venv/bin/python draft_assistant.py`.
 - `draft_rankings.py` — the static cheat-sheet version. Prints a top-60
   board and writes a CSV per league to `output/` (gitignored).
+- `weekly_rankings.py` — this week's expert opinion. FantasyPros rebuilds its
+  rankings every week, one page per position, and those pages carry more than
+  a rank: FantasyPros' own weekly point projection, how far a player moved
+  since the last rebuild, and how widely the analysts disagree about him.
+  Cached 3 hours (weekly lists move all week as practice reports land, unlike
+  the 12-hour draft board). Refuses a page that comes back for the wrong week
+  — FantasyPros rolls over to the next week once games finish, and would
+  otherwise hand us the wrong list silently.
+- `lineup.py` — the start/sit engine. Averages ESPN's weekly projection with
+  FantasyPros' weekly projection 50/50 (both are already in points, so no
+  rank juggling), applies injury designations, and solves for the best legal
+  lineup. **The flex trap:** "start your highest projections" is not the same
+  as "start the best lineup". The solver fills the fussiest slots first — a
+  QB-only slot before a flex that takes almost anyone — which is optimal here
+  because every flexible slot accepts a superset of what the stricter ones
+  accept. Filling flex first can strand a dedicated slot empty.
+- `start_sit.py` — the weekly command. `.venv/bin/python start_sit.py` prints
+  a board per league: recommended lineup, what to change and why, starters to
+  watch, and the bench. Won't recommend a change worth less than 0.5 points —
+  both projections have real error bars and churning the lineup over a tenth
+  of a point makes the tool feel unreliable.
+- `test_lineup.py` — checks the solver against brute force (every legal
+  arrangement, tried one at a time), including 200 random rosters. The solver
+  is the one piece that can be quietly wrong: a lineup leaving half a point
+  on the table looks completely normal in the output.
 - `check_connection.py` — original sanity check.
 
 Unverified until draft day: whether ESPN publishes picks to its read API
@@ -106,32 +131,52 @@ scored: "he is not the sleeper everyone thinks" and "he is a sleeper" are
 nearly the same sentence, so a misread can never cost a pick. Changing teams
 is flagged but deliberately unscored — it cuts both ways.
 
-Still missing: start/sit, waiver, matchup-aware and trade logic. Sleeper and
-bust signals are now built (`signals.py`), but only the ones that come from
-source disagreement — age cliffs and suspensions are still not modelled,
-because neither is in the data the board already pulls.
+Start/sit is now built (`weekly_rankings.py`, `lineup.py`, `start_sit.py`).
+Still missing: waiver, matchup-aware and trade logic. Sleeper and bust
+signals are built (`signals.py`), but only the ones that come from source
+disagreement — age cliffs and suspensions are still not modelled, because
+neither is in the data the board already pulls.
 
-Rough build order: (1) draft tooling — done, now blended with FantasyPros,
-(2) start/sit and waiver recommendations once the season has live
-rosters/matchups, (3) advanced matchup- and trade-aware recommendations
-once the basics work.
+Rough build order: (1) draft tooling — done, blended with FantasyPros,
+(2) start/sit — done, (3) waiver and pickup/drop recommendations,
+(4) advanced matchup- and trade-aware recommendations.
 
 Known library quirk: `espn_api` keeps scoring rules in a shared dictionary,
 so connecting to two leagues in one process makes the first one report the
-second one's reception value. Nothing does that today (one league per run).
-Anything that touches two leagues at once must read
-`leagues.describe_rules()` right after connecting and remember the answer.
+second one's reception value. `start_sit.py` DOES do this — it walks all
+three leagues in one run — so it connects, reads `leagues.describe_rules()`
+and builds that league's whole board before connecting to the next one.
+Anything else that touches two leagues at once must do the same: read the
+rules right after connecting and remember the answer. Reordering that loop
+so connections happen up front would silently give two leagues the wrong
+scoring format, and the boards would still look perfectly reasonable.
 
 ## Leagues
 
 Three ESPN leagues for 2026, all 12-team, and they do NOT share rules —
 anything that assumes one format is a bug:
 
-| League | ID | My team | Rules |
-|---|---|---|---|
-| The Boyz are Back | 930020 | 2 | half PPR, **2 flex** |
-| D.C.F. | 1648293 | 10 | **full PPR**, 1 flex |
-| Only Sig Chi's, Mkay? | 946985 | 8 | half PPR, 1 flex |
+| League | ID | My team | Rules | Waivers | Trades |
+|---|---|---|---|---|---|
+| The Boyz are Back | 930020 | 2 | half PPR, **2 flex**, 8 playoff teams | FAAB **$100**, min bid $0, 12:00, every day but Tue | **no deadline**, 4 veto votes |
+| D.C.F. | 1648293 | 10 | **full PPR**, 1 flex, 8 playoff teams | FAAB **$75**, min bid $1, 11:00, every day but Sun/Tue | deadline Dec 4, 4 veto votes |
+| Only Sig Chi's, Mkay? | 946985 | 8 | half PPR, 1 flex, **6 playoff teams** | FAAB **$100**, min bid $1, 12:00, every day but Mon/Tue | deadline Dec 2, **0 veto votes** |
+
+Read from ESPN on 2026-09-09, not assumed. Notes that matter:
+
+- **All three are FAAB**, so there is no waiver-priority mode to build.
+- **None of them use the classic Tuesday-night wire.** Each processes almost
+  daily at its own hour, and Tuesday is the one day none of them run. Any
+  waiver alerting must read each league's real schedule.
+- Waiver process hours are ESPN's raw values; **the timezone is unconfirmed**
+  and should be checked against a real processed claim before alarms depend
+  on it.
+- `acquisitionBudgetSpent` per team is readable, so the tool always knows
+  what every opponent has left to bid.
+- Bid history exists (`bidAmount` on every transaction) but as of Week 1
+  there were only 6 real claims across all three leagues, all $1–$2. FAAB
+  recommendations have to start on a heuristic and calibrate as the season
+  fills that history in.
 
 ## Config
 
