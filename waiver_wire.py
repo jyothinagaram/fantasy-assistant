@@ -5,6 +5,12 @@ Your waiver report: who to pick up, who to drop, and what to bid.
     .venv/bin/python waiver_wire.py --league "D.C.F."
     .venv/bin/python waiver_wire.py --week 3   # value pickups from week 3 on
     .venv/bin/python waiver_wire.py --top 5    # fewer suggestions
+    .venv/bin/python waiver_wire.py --all-positions   # include QB, K, D/ST
+
+The report opens with UNDER THE RADAR: running backs, receivers and tight
+ends whose situation just changed (a teammate hurt, a growing role, managers
+rushing to add him, a good matchup) before their numbers catch up. Then the
+usual claims list, ranked by how much each pickup helps your lineup.
 
 Like everything else here, it cannot change anything on ESPN. You place the
 claims yourself in the app.
@@ -17,6 +23,7 @@ import warnings
 warnings.filterwarnings("ignore")
 
 import leagues
+import upside
 import waivers
 
 
@@ -29,6 +36,11 @@ def parse_arguments():
     parser.add_argument(
         "--espn-only", action="store_true", help="Skip FantasyPros for this week's numbers"
     )
+    parser.add_argument(
+        "--all-positions",
+        action="store_true",
+        help="Include QB, K and D/ST in the claims list (skill players only by default)",
+    )
     return parser.parse_args()
 
 
@@ -37,6 +49,49 @@ def describe_schedule(settings):
     hour = settings["process_hour"]
     hour_text = f"hour {hour}" if hour is not None else "unknown hour"
     return f"Claims process {days} at {hour_text} (ESPN's timezone for this is unconfirmed)"
+
+
+def print_under_the_radar(report, gems, top):
+    """
+    Skill players with a changed situation, best evidence first.
+
+    Each shows why it was picked, the latest news note word for word, and --
+    when he would already help your lineup on today's numbers -- who to drop
+    and what to bid. When he would not help yet, he is labelled a stash: the
+    bet is that the opening or role turns into points before ESPN notices.
+    """
+    print("\n  UNDER THE RADAR  (RB / WR / TE whose situation just changed)")
+    if not gems:
+        print("    Nobody available has enough evidence behind them this week.")
+        return
+
+    by_id = {s["add"].get("player_id"): s for s in report["swaps"]}
+    for number, player in enumerate(gems[:top], start=1):
+        opponent = f" vs {player['opponent']}" if player.get("opponent") else ""
+        print(
+            f"\n  {number}. {player['name']} ({player['position']}, {player['team']}{opponent})"
+            f"   upside {player['upside']:.1f}   owned {player['percent_owned']:.0f}%"
+        )
+        for reason in player["upside_reasons"]:
+            print(f"       - {reason}")
+
+        swap = by_id.get(player["player_id"])
+        if swap and swap["gain_per_week"] >= waivers.WORTH_A_CLAIM:
+            drop = swap["drop"]
+            drop_text = f"drop {drop['name']}" if drop else "no drop needed"
+            print(
+                f"     CLAIM: {drop_text}, bid ${swap['bid']} "
+                f"(+{swap['gain_per_week']:.1f} pts/week on today's numbers)"
+            )
+        else:
+            print(
+                "     STASH: doesn't beat your players on today's projections -- "
+                "worth a $%d bid if you have a spare bench spot" % report["settings"]["minimum_bid"]
+            )
+
+        if player.get("note"):
+            date = f" ({player['note_date'][:10]})" if player.get("note_date") else ""
+            print(f"     news{date}: \"{player['note']}\"")
 
 
 def print_report(report, top):
@@ -63,7 +118,11 @@ def print_report(report, top):
     if not report["expert_summary"]:
         print("  Expert rankings unavailable -- this week's numbers are ESPN only.")
 
+    print_under_the_radar(report, report.get("under_the_radar") or [], top)
+
     worth = [s for s in report["swaps"] if s["gain_per_week"] >= waivers.WORTH_A_CLAIM]
+    if report.get("skill_only"):
+        worth = [s for s in worth if s["add"]["position"] in upside.SKILL_POSITIONS]
     if not worth:
         print("\n  NOTHING WORTH A CLAIM -- no free agent adds even "
               f"{waivers.WORTH_A_CLAIM} pts a week to your best lineup.")
@@ -75,7 +134,8 @@ def print_report(report, top):
                       f"+{swap['gain_per_week']:.1f}/wk")
         return
 
-    print(f"\n  RECOMMENDED CLAIMS  (best first)")
+    label = "all positions" if not report.get("skill_only") else "RB / WR / TE"
+    print(f"\n  RECOMMENDED CLAIMS  ({label}, best on today's numbers)")
     for number, swap in enumerate(worth[:top], start=1):
         add, drop = swap["add"], swap["drop"]
         print(
@@ -181,6 +241,13 @@ def main():
         except Exception as error:
             print(f"\nCould not build a waiver report for {entry['name']}: {error}")
             continue
+        report["skill_only"] = not arguments.all_positions
+        try:
+            report["under_the_radar"] = upside.find(
+                league, credentials["season"], report["first_week"]
+            )
+        except Exception as error:
+            print(f"\n(Could not look for under-the-radar players: {error})")
         print_report(report, arguments.top)
 
 
