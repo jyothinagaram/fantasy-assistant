@@ -37,6 +37,7 @@ import leagues
 import lineup
 import status
 import trades
+import usage
 import waiver_wire
 import waivers
 from app_page import PAGE_HTML
@@ -69,6 +70,7 @@ def player_view(p):
         "this_week": round(p["score"], 1) if p.get("score") is not None else None,
         "owned": round(p.get("percent_owned") or 0),
         "opponent": p.get("opponent"),
+        "usage": usage.describe(p.get("usage")),
     }
 
 
@@ -236,7 +238,7 @@ def private_board(board):
     """
     keep = ("player_id", "name", "position", "pro_team", "injury_status", "current_slot",
             "bye_week", "season_projected_avg", "season_actual_avg", "games_played",
-            "score", "percent_owned")
+            "score", "percent_owned", "usage")
     return {
         "team_id": board["team_id"],
         "slots": board["slots"],

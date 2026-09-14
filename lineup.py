@@ -417,6 +417,12 @@ def build(league, team_id, week, season, use_experts=True, force_refresh=False):
     except Exception:
         pass  # the countdown and the notes are a bonus, not the board
 
+    try:
+        import usage
+        usage.attach(players, usage.load(season))
+    except Exception:
+        pass  # snap and target data is shown, never scored here
+
     expert_summary = None
     scoring = None
     if use_experts:

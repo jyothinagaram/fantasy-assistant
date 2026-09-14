@@ -72,6 +72,25 @@ def test_crowd_and_bad_matchup():
     assert score == 1.0, (score, reasons)  # +2 trending, -1 tough matchup
 
 
+def test_snaps_without_targets_earn_nothing():
+    blocker = make("Blocker", targets=1)
+    blocker["usage"] = {"snap_pct": 0.8, "snap_trend": None, "target_share": 0.04}
+    receiver = make("Receiver", targets=1)
+    receiver["usage"] = {"snap_pct": 0.8, "snap_trend": None, "target_share": 0.2}
+    pool = [blocker, receiver, make("Other", targets=20)]
+    blocker_score, reasons = run(blocker, pool)
+    receiver_score, _ = run(receiver, pool)
+    assert receiver_score > blocker_score, (receiver_score, blocker_score)
+    assert any("rarely gets the ball" in r for r in reasons), reasons
+
+
+def test_snap_jump_is_rewarded():
+    riser = make("Riser", targets=6)
+    riser["usage"] = {"snap_pct": 0.75, "snap_trend": 0.3, "target_share": 0.18}
+    score, reasons = run(riser, [riser, make("Other", targets=20)])
+    assert any(r.startswith("ROLE GROWING") for r in reasons), reasons
+
+
 if __name__ == "__main__":
     tests = [v for k, v in dict(globals()).items() if k.startswith("test_")]
     for test in tests:

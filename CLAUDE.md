@@ -200,6 +200,22 @@ The draft tooling is built and tested. Files:
   (1+ pt below median) the waiver, stash and trade options that fix it. No
   new maths — everything comes from lineup, waivers, upside and trades, so it
   always agrees with the detailed tools. Slow: ~1.5 min per league.
+- `usage.py` — FREE snap counts and target data from nflverse
+  (github.com/nflverse/nflverse-data releases: `snap_counts_<season>.csv`,
+  `stats_player_week_<season>.csv`, `players.csv`), cached 6 hours (players
+  table 7 days). Matched to ESPN by **espn_id** via nflverse's players table
+  (pfr_id for snaps, gsis_id for stats) — never by name. Per player: latest
+  snap %, snap trend vs his earlier games, target share / air-yards share /
+  WOPR averaged over the last 2 weeks. nflverse posts a day or two after
+  games. Shown as a "usage" line in start/sit, waivers, trades and the app.
+  In `upside.py` snaps VOTE: +1.5 for a snap jump of 15+ pts ("ROLE
+  GROWING", usually a week before targets follow), +0.5 for 70%+ snaps, and
+  40%+ snaps counts as next-in-line for an opening. **Snaps only count if
+  the ball comes his way** (10%+ target share, or 8+ touches for RBs) —
+  Rashod Bateman made the list on 78% snaps and 4% of targets, a blocker.
+  nflverse's target share replaces the ESPN-pool estimate when present.
+- `test_usage.py` — ID matching, snap trend, preseason rows ignored, shares,
+  and missing files.
 - `app.py` + `app_page.py` — the in-season web app, the main way the user
   wants to use the tool. `.venv/bin/python app.py` opens it in the browser
   and prints a phone address (same Wi-Fi; binds 0.0.0.0 unless
@@ -248,8 +264,8 @@ Start/sit is now built (`weekly_rankings.py`, `lineup.py`, `status.py`,
 Waivers are built too (`waivers.py`, `waiver_wire.py`, `upside.py`), and
 trades (`trades.py`, `trade_finder.py`). Still missing: matchup-aware logic
 (who I play this week), broader data collection. The UI is built (`app.py`). The user chose FREE
-data sources only, in this order: snap counts and route/target data
-(nflverse), rest-of-season FantasyPros rankings, defence vs position from
+data sources only, in this order: snap counts and target data (nflverse) —
+DONE, rest-of-season FantasyPros rankings, defence vs position from
 ESPN box scores, league bid history for FAAB, opponent-aware start/sit. Sleeper and bust
 signals are built (`signals.py`), but only the ones that come from source
 disagreement — age cliffs and suspensions are still not modelled, because

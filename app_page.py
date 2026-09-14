@@ -304,7 +304,8 @@ function playerRow(p, slotLabel) {
   const experts = p.experts != null ? ` · experts ${p.experts.toFixed(1)}` : "";
   return `<div class="player">${slotLabel !== undefined ? `<div class="slot">${esc(slotLabel || "")}</div>` : ""}
     <div class="who"><div class="name">${esc(p.name)}${flag}</div>
-    <div class="muted small">${esc(p.position)} · ${esc(p.team)}${p.opponent ? " vs " + esc(p.opponent) : ""} · ESPN ${p.espn?.toFixed(1) ?? "–"}${experts} ${lock}</div></div>
+    <div class="muted small">${esc(p.position)} · ${esc(p.team)}${p.opponent ? " vs " + esc(p.opponent) : ""} · ESPN ${p.espn?.toFixed(1) ?? "–"}${experts} ${lock}</div>
+    ${p.usage ? `<div class="muted small">${esc(p.usage)}</div>` : ""}</div>
     <div class="pts">${p.this_week?.toFixed(1) ?? "–"}</div></div>`;
 }
 
@@ -361,7 +362,7 @@ function renderWaivers(d) {
     html += `<div class="card" id="gem-${g.id}"><div class="row">
       <div><b>${esc(g.name)}</b> <span class="muted">${esc(g.position)} · ${esc(g.team)}${g.opponent ? " vs " + esc(g.opponent) : ""}</span></div>
       <span class="pill accent">UPSIDE ${g.upside.toFixed(1)}</span></div>
-      <div class="muted small">owned in ${g.owned}% of ESPN leagues</div>
+      <div class="muted small">owned in ${g.owned}% of ESPN leagues${g.usage ? " · " + esc(g.usage) : ""}</div>
       <ul class="reasons">${g.reasons.map(r => `<li>${esc(r)}</li>`).join("")}</ul>
       ${g.note ? `<div class="quote">“${esc(g.note)}”${g.note_date ? `<div class="small" style="font-style:normal;margin-top:4px">— ${esc(g.note_date)}</div>` : ""}</div>` : ""}
       ${g.claim ? claimBlock(g.claim) : `<div class="muted small" style="margin-top:10px"><span class="pill">STASH</span> doesn't beat your players on today's numbers — a $${w.minimum_bid} bid if you have a spare bench spot.</div>`}</div>`;
@@ -382,7 +383,8 @@ function renderWaivers(d) {
 
 function tradeCard(t, id) {
   const names = (list) => list.map(p => `<div style="font-weight:600">${esc(p.name)}${p.injury ? ` <span class="pill warn">${esc(p.injury)}</span>` : ""}</div>
-    <div class="muted small">${esc(p.position)} · ${p.normal_week?.toFixed(1) ?? "–"} pts/wk</div>`).join("");
+    <div class="muted small">${esc(p.position)} · ${p.normal_week?.toFixed(1) ?? "–"} pts/wk</div>
+    ${p.usage ? `<div class="muted small">${esc(p.usage)}</div>` : ""}`).join("");
   const verdict = (n) => n >= 2 ? "good" : n >= 0.5 ? "good" : n > -0.5 ? "" : "bad";
   let lopsided = "";
   if (t.paper_get > 1.25 * t.paper_give) lopsided = `On paper you get ${t.paper_get} pts/wk of players for ${t.paper_give} — they may see it as lopsided, so explain why it helps them.`;

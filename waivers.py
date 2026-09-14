@@ -359,6 +359,11 @@ def build(league, team_id, season, week=None, use_experts=True, force_refresh=Fa
     ]
 
     everyone = mine + free_agents
+    try:
+        import usage
+        usage.attach(everyone, usage.load(season))
+    except Exception:
+        pass  # snap and target data is shown, never required
     expert_summary = None
     if use_experts:
         _, by_position = weekly_rankings.load_for_league(

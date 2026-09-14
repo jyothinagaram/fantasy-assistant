@@ -239,6 +239,11 @@ def build(league, team_id, season, week=None, use_experts=True, force_refresh=Fa
     }
 
     everyone = [p for entry in rosters.values() for p in entry["players"]]
+    try:
+        import usage
+        usage.attach(everyone, usage.load(season))
+    except Exception:
+        pass
     expert_summary = None
     if use_experts:
         _, by_position = weekly_rankings.load_for_league(

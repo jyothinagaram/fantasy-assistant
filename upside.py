@@ -38,6 +38,7 @@ import json
 import commentary
 import outside_rankings
 import status as game_status
+import usage as nfl_usage
 
 
 SKILL_POSITIONS = {"RB", "WR", "TE"}
@@ -84,6 +85,19 @@ NOT_NEXT_IN_LINE_CREDIT = 0.4
 # At most this many players from one team, so one injury cannot fill the list
 # with the same receiver room.
 MAX_PER_TEAM = 2
+
+# Snap share (from nflverse, when available). Being on the field is the
+# precondition for everything else: a receiver on 75% of snaps is a starter
+# whatever the depth chart says, and a big jump in snaps is the earliest
+# sign of a new role -- it usually comes a week before the targets do.
+STARTER_SNAPS = 0.70
+NEXT_IN_LINE_SNAPS = 0.40
+
+# Snaps only count when the ball comes his way. A receiver on the field for
+# 78% of plays who draws 4% of the targets is there to block -- found in the
+# first real run (Rashod Bateman). Below these, snaps earn nothing.
+SNAPS_NEED_TARGET_SHARE = 0.10   # receivers and tight ends
+SNAPS_NEED_TOUCHES = 8.0         # running backs, carries + targets a game
 
 # A player needs at least this much evidence to be listed.
 MINIMUM_UPSIDE = 2.0
@@ -263,6 +277,10 @@ def score_player(player, injured_by_team, shares, totals):
                 and player["targets"] / games >= NEXT_IN_LINE_TARGETS
             )
             or (position == "RB" and touches >= 5)
+            or (
+                ((player.get("usage") or {}).get("snap_pct") or 0) >= NEXT_IN_LINE_SNAPS
+                and ((player.get("usage") or {}).get("target_share") or 0) >= SNAPS_NEED_TARGET_SHARE
+            )
         )
         earned = min(3.0, vacated / 4) * (1.0 if next_in_line else NOT_NEXT_IN_LINE_CREDIT)
         points += earned
@@ -275,9 +293,33 @@ def score_player(player, injured_by_team, shares, totals):
         reasons.append(f"OPENING: {', '.join(names)} -- {text}")
 
     # 2. A role
+    use = player.get("usage") or {}
+    involved = (
+        (use.get("touches_per_game") or 0) >= SNAPS_NEED_TOUCHES
+        if position == "RB"
+        else (use.get("target_share") or 0) >= SNAPS_NEED_TARGET_SHARE
+    )
+    if use.get("snap_pct") is not None and not involved and use["snap_pct"] >= STARTER_SNAPS:
+        reasons.append(
+            f"on the field for {use['snap_pct']:.0%} of snaps but rarely gets the ball"
+        )
+    elif use.get("snap_pct") is not None:
+        trend = use.get("snap_trend")
+        if trend is not None and trend >= nfl_usage.SNAP_JUMP:
+            points += 1.5
+            reasons.append(
+                f"ROLE GROWING: played {use['snap_pct']:.0%} of snaps last game, "
+                f"up {trend * 100:.0f} pts on his earlier games"
+            )
+        elif use["snap_pct"] >= STARTER_SNAPS:
+            points += 0.5
+            reasons.append(f"ROLE: on the field for {use['snap_pct']:.0%} of snaps")
+
     if games:
         touches = (player["carries"] + player["targets"]) / games
-        share = shares.get(id(player), 0.0)
+        # nflverse's target share uses the team's true total; the ESPN pool
+        # estimate misses targets to players outside the pool. Prefer it.
+        share = use.get("target_share") if use.get("target_share") is not None else shares.get(id(player), 0.0)
         if position == "RB":
             earned = 2.0 if touches >= 16 else 1.0 if touches >= 10 else 0.0
             if earned:
@@ -342,6 +384,10 @@ def find(league, season, week):
     role or a crowd moving toward him as well.
     """
     pool = fetch_pool(league, week)
+    try:
+        nfl_usage.attach(pool, nfl_usage.load(season))
+    except Exception:
+        pass  # usage is a bonus; ESPN's numbers still work without it
     injured = openings(pool)
     shares = target_shares(pool)
     totals = team_totals(season, week)

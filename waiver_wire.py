@@ -74,6 +74,10 @@ def print_under_the_radar(report, gems, top):
         )
         for reason in player["upside_reasons"]:
             print(f"       - {reason}")
+        import usage
+        used = usage.describe(player.get("usage"))
+        if used:
+            print(f"       - usage: {used}")
 
         swap = by_id.get(player["player_id"])
         if swap and swap["gain_per_week"] >= waivers.WORTH_A_CLAIM:
@@ -183,6 +187,10 @@ def reasons(swap, report):
             f"has actually averaged {add['season_actual_avg']:.1f} over "
             f"{add['games_played']} game(s) vs {add['season_projected_avg']:.1f} projected"
         )
+    import usage
+    used = usage.describe(add.get("usage"))
+    if used:
+        notes.append(f"usage last game: {used}")
     status = add.get("injury_status") or "ACTIVE"
     if status in {"INJURY_RESERVE", "SUSPENSION"}:
         notes.append(
