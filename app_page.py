@@ -344,7 +344,7 @@ function renderLineup(d) {
       ${[...c.in.reasons, ...c.out.reasons.map(r => c.out.name + ": " + r)].length ? `<ul class="reasons">${[...c.in.reasons, ...c.out.reasons.map(r => c.out.name + ": " + r)].map(r => `<li>${esc(r)}</li>`).join("")}</ul>` : ""}</div>`;
   }
 
-  const watch = s.lineup.filter(p => p.injury || p.reasons.some(r => /questionable|practice|split|moved him down|ESPN higher/.test(r)));
+  const watch = s.lineup.filter(p => p.injury || p.reasons.some(r => /questionable|practice|split|moved him down|ESPN higher|^weather/.test(r)));
   if (watch.length) {
     html += `<h2>Watch these starters</h2>`;
     for (const p of watch) html += `<div class="card"><div class="row"><b>${esc(p.name)}</b><span class="muted small">${esc(p.locks_in || "")}</span></div>

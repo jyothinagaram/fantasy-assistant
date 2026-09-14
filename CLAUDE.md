@@ -270,6 +270,16 @@ The draft tooling is built and tested. Files:
   nflverse play-by-play (`play_by_play_<season>.csv.gz`, 6h cache). Merged
   into the `usage.py` summary so it appears in every usage line; in
   `upside.py` 25%+ of team red-zone chances (3+ opportunities) is +0.5.
+- `weather.py` — kickoff-hour forecast for OUTDOOR games only, free and
+  keyless: ESPN scoreboard gives venue city/state/country and `indoor`
+  (handles neutral-site/international games); Open-Meteo geocodes the city
+  (cached permanently; picks the right US state — many Springfields) and
+  forecasts wind/gusts/rain chance/temperature (3h cache, 16-day window).
+  Flags wind 15+ mph (K, QB, WR, TE), rain 60%+ (K, QB, WR), 25°F or colder
+  (K) — only on the positions each hurts. Shown, never scored (betting totals
+  and projections move with forecasts). In start/sit reasons, "watch" list,
+  and the app.
+- `test_weather.py` — thresholds, wording, state matching, affected positions.
 - `test_usage.py` — ID matching, snap trend, preseason rows ignored, shares,
   and missing files.
 - `app.py` + `app_page.py` — the in-season web app, the main way the user
@@ -324,7 +334,8 @@ data sources only, in this order: snap counts and target data (nflverse) —
 DONE, rest-of-season FantasyPros rankings, defence vs position from
 ESPN box scores, league bid history for FAAB — DONE (`bids.py`), opponent-aware
 start/sit — DONE (`matchup.py` + `consistency.py`), red-zone touches — DONE
-(`redzone.py`), then weather, playoff-week schedules. Sleeper and bust
+(`redzone.py`), weather — DONE (`weather.py`),
+then playoff-week schedules. Sleeper and bust
 signals are built (`signals.py`), but only the ones that come from source
 disagreement — age cliffs and suspensions are still not modelled, because
 neither is in the data the board already pulls.

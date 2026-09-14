@@ -263,6 +263,7 @@ def print_board(board, rules):
             or "experts split" in note
             or "moved him down" in note
             or "ESPN higher than experts" in note
+            or note.startswith("weather")
         ]
         if notes:
             watch.append((player, notes))
