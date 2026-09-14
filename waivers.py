@@ -31,9 +31,8 @@ FACTS VOTE, PROSE DOES NOT -- the same rule as the rest of the project.
 Projections, points scored, bye weeks and injury designations move the
 numbers. Nothing a writer said does.
 
-The FAAB bid is a heuristic, and says so. As of Week 1 there were only six
-real claims across all three leagues, which is nothing to learn from. The
-bid should be recalibrated once the season has produced some bid history.
+The FAAB bid starts as a rule of thumb, then `bids.py` moves it toward what
+this league actually pays once enough contested claims exist to learn from.
 """
 
 import lineup
@@ -409,14 +408,27 @@ def build(league, team_id, season, week=None, use_experts=True, force_refresh=Fa
         if t.team_id != team_id
     ]
 
+    try:
+        import bids
+        market = bids.history(league, settings["budget"] or 0, settings["minimum_bid"])
+    except Exception:
+        market = None
+
     swaps = best_swaps(mine, free_agents, slots, weeks, first_week, roster_full)
     for swap in swaps:
-        swap["bid"] = suggest_bid(
+        rule_of_thumb = suggest_bid(
             swap["gain_per_week"],
             budget_left,
             settings["minimum_bid"],
             swap["add"].get("percent_owned"),
         )
+        if market:
+            swap["bid"], swap["bid_note"] = bids.adjust(
+                rule_of_thumb, swap["gain_per_week"], budget_left,
+                settings["minimum_bid"], market,
+            )
+        else:
+            swap["bid"], swap["bid_note"] = rule_of_thumb, None
         swap["bye_cover"] = bye_weeks_covered(swap["add"], mine, weeks)
 
     return {
@@ -430,6 +442,7 @@ def build(league, team_id, season, week=None, use_experts=True, force_refresh=Fa
         "roster_full": roster_full,
         "expert_summary": expert_summary,
         "ros_summary": ros_summary,
+        "market": market,
     }
 
 

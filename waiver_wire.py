@@ -123,6 +123,8 @@ def print_report(report, top):
         print(f"  Most money left elsewhere: {others}")
     if not report["expert_summary"]:
         print("  Expert rankings unavailable -- this week's numbers are ESPN only.")
+    import bids
+    print(f"  {bids.describe(report.get('market'))}")
 
     print_under_the_radar(report, report.get("under_the_radar") or [], top)
 
@@ -214,6 +216,8 @@ def reasons(swap, report):
         notes.append(f"covers your bye week(s): {weeks}")
     notes.append(f"owned in {add['percent_owned']:.0f}% of ESPN leagues")
 
+    if swap.get("bid_note"):
+        notes.append(f"bid {swap['bid_note']}")
     drop = swap["drop"]
     if drop:
         notes.append(

@@ -236,6 +236,17 @@ The draft tooling is built and tested. Files:
   the app (green soft, red tough).
 - `test_defense.py` — crediting and ranking, previewed week excluded, scoring
   formats, the prior, and no label after one game.
+- `bids.py` — each league's real FAAB prices from ESPN `mTransactions2`
+  (read week by week; WAIVER type, EXECUTED = won, FAILED* = lost, when
+  ESPN exposes them). Summarises contested claims (bid above the minimum):
+  median winning bid, the bid that wins 3 in 4 (75th percentile), largest
+  bid, each manager's claims/spend. Once 5+ contested claims exist it
+  adjusts the rule-of-thumb bid: pickups worth 3+ pts/wk are raised to at
+  least the 3-in-4 price; smaller ones are capped at 1.25x the median, so
+  budget is not wasted in a cheap league. Below 5 it changes nothing and
+  says so. As of 2026-09-14: 0, 1 and 3 claims — all rule of thumb.
+- `test_bids.py` — too little history, minimum-bid claims not contested,
+  raise/cap, budget ceiling, rival counting.
 - `test_usage.py` — ID matching, snap trend, preseason rows ignored, shares,
   and missing files.
 - `app.py` + `app_page.py` — the in-season web app, the main way the user

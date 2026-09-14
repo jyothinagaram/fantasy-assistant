@@ -32,6 +32,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 warnings.filterwarnings("ignore")
 
+import bids
 import coach
 import leagues
 import lineup
@@ -142,6 +143,8 @@ def waivers_view(report, gems):
         "budget_left": report["budget_left"],
         "minimum_bid": settings["minimum_bid"],
         "richest": report["opponents"][:3],
+        "market": bids.describe(report.get("market")),
+        "big_spenders": [m for m in (report.get("market") or {}).get("managers", [])][:4],
         "gems": gem_rows,
         "claims": [claim(s) for s in worth[:CLAIMS_SHOWN]],
         "weeks": [report["weeks"][0], report["weeks"][-1]] if report["weeks"] else None,

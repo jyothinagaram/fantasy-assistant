@@ -355,7 +355,9 @@ function renderWaivers(d) {
   let html = `<div class="stats" style="margin-top:4px">
     <div class="stat"><div class="label">Your FAAB left</div><div class="value">$${w.budget_left}</div><div class="muted small">min bid $${w.minimum_bid}</div></div>
     <div class="stat"><div class="label">Most money elsewhere</div><div class="value">$${w.richest[0]?.budget_left ?? "–"}</div><div class="muted small">${esc(w.richest[0]?.team || "")}</div></div></div>
-    <div class="muted small" style="margin-top:8px">${esc(w.schedule)}</div>`;
+    <div class="muted small" style="margin-top:8px">${esc(w.schedule)}</div>
+    <div class="muted small" style="margin-top:4px">${esc(w.market || "")}</div>
+    ${w.big_spenders && w.big_spenders.length ? `<div class="muted small" style="margin-top:4px">Biggest spenders: ${w.big_spenders.map(m => `${esc(m.team)} $${m.spent} (${m.claims})`).join(" · ")}</div>` : ""}`;
 
   html += `<h2>Under the radar</h2><div class="muted small" style="margin:-4px 0 10px">Running backs, receivers and tight ends whose situation just changed, before their numbers catch up.</div>`;
   if (!w.gems.length) html += `<div class="card muted">Nobody available has enough evidence behind them this week.</div>`;
