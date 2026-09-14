@@ -235,6 +235,12 @@ function moveButton(move) {
 function renderHome(d) {
   const h = d.home, s = h.season, latest = s.weeks[s.weeks.length - 1];
   let html = `<h2>How you're doing</h2><div class="stats">`;
+  if (d.start_sit && d.start_sit.matchup) {
+    const m = d.start_sit.matchup, cls = m.situation === "favourite" ? "good" : m.situation === "underdog" ? "bad" : "warn";
+    html += `<div class="stat" onclick="setTab('lineup')" style="cursor:pointer"><div class="label">Week ${d.start_sit.week} vs ${esc(m.opponent)}</div>
+      <div class="value ${cls}">${m.chance}% <span class="muted small">${esc(m.situation)}</span></div>
+      <div class="muted small">${m.mine.toFixed(1)} – ${m.theirs.toFixed(1)} projected</div></div>`;
+  }
   if (latest) {
     const result = !latest.final ? "In progress"
       : latest.score > latest.opponent_score ? "Won" : latest.score < latest.opponent_score ? "Lost" : "Tied";
@@ -306,14 +312,23 @@ function playerRow(p, slotLabel) {
   return `<div class="player">${slotLabel !== undefined ? `<div class="slot">${esc(slotLabel || "")}</div>` : ""}
     <div class="who"><div class="name">${esc(p.name)}${flag}</div>
     <div class="muted small">${esc(p.position)} · ${esc(p.team)}${p.opponent ? " vs " + esc(p.opponent) : ""} · ESPN ${p.espn?.toFixed(1) ?? "–"}${experts} ${lock}</div>
-    ${p.usage ? `<div class="muted small">${esc(p.usage)}</div>` : ""}${matchupLine(p)}</div>
+    ${p.usage ? `<div class="muted small">${esc(p.usage)}</div>` : ""}${matchupLine(p)}${p.consistency ? `<div class="muted small">${esc(p.consistency)}</div>` : ""}</div>
     <div class="pts">${p.this_week?.toFixed(1) ?? "–"}</div></div>`;
 }
 
 function renderLineup(d) {
   const s = d.start_sit;
   if (!s) return `<div class="empty">Start/sit is not available for this league right now.</div>`;
-  let html = `<h2>Week ${s.week}</h2><div class="stats">
+  let html = "";
+  if (s.matchup) {
+    const m = s.matchup, cls = m.situation === "favourite" ? "good" : m.situation === "underdog" ? "bad" : "warn";
+    html += `<h2>This week's matchup</h2><div class="card"><div class="row"><div><div class="muted small">vs ${esc(m.opponent)}</div>
+      <div class="big">${m.mine.toFixed(1)} <span class="muted">– ${m.theirs.toFixed(1)}</span></div></div>
+      <div style="text-align:right"><div class="big ${cls}">${m.chance}%</div><div class="small ${cls}">${esc(m.situation)}</div></div></div>
+      ${m.tiebreaks.length ? `<div class="muted small" style="margin-top:8px">Close calls worth leaning on:</div><ul class="reasons">${m.tiebreaks.map(t => `<li><b style="color:var(--ink)">${esc(t.start)}</b> over ${esc(t.over)} (${esc(t.slot)}) — ${esc(t.reason)}</li>`).join("")}</ul>`
+        : `<div class="muted small" style="margin-top:8px">${m.situation === "toss-up" ? "It's close — just start the highest projections." : "No close calls where that changes anything."}</div>`}</div>`;
+  }
+  html += `<h2>Week ${s.week}</h2><div class="stats">
     <div class="stat"><div class="label">Best lineup</div><div class="value">${s.recommended_total.toFixed(1)}</div></div>
     <div class="stat"><div class="label">Your current lineup</div><div class="value">${s.current_total.toFixed(1)}</div></div></div>`;
   if (!s.experts_loaded) html += `<div class="muted small" style="margin-top:8px">Expert rankings for this week aren't out yet — using ESPN projections only.</div>`;

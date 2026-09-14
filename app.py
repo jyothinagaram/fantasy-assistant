@@ -35,7 +35,9 @@ warnings.filterwarnings("ignore")
 import bids
 import coach
 import leagues
+import consistency
 import lineup
+import matchup
 import status
 import trades
 import usage
@@ -78,7 +80,7 @@ def player_view(p):
     }
 
 
-def start_sit_view(board):
+def start_sit_view(board, head_to_head=None):
     if not board:
         return None
 
@@ -93,6 +95,7 @@ def start_sit_view(board):
             reasons=lineup.reasons(p),
             practice=status.describe_practice(p),
             note=p.get("note_headline"),
+            consistency=consistency.describe(p.get("consistency")),
         )
         return view
 
@@ -108,6 +111,17 @@ def start_sit_view(board):
         "gain": gain,
         "worth_changing": gain >= 0.5,
         "experts_loaded": bool(board["expert_summary"]),
+        "matchup": None if not head_to_head else {
+            "opponent": head_to_head["opponent"],
+            "mine": head_to_head["my_projected"],
+            "theirs": head_to_head["their_projected"],
+            "chance": round(matchup.rounded(head_to_head["win_probability"]) * 100),
+            "situation": head_to_head["situation"],
+            "tiebreaks": [
+                {"start": t["start"]["name"], "over": t["over"]["name"], "slot": t["slot"], "reason": t["reason"]}
+                for t in head_to_head["tiebreaks"]
+            ],
+        },
     }
 
 
@@ -267,7 +281,7 @@ def page_payload(report):
         "league_name": report["league_name"],
         "week": report["first_week"],
         "home": home_view(report),
-        "start_sit": start_sit_view(report["start_sit"]),
+        "start_sit": start_sit_view(report["start_sit"], report.get("matchup")),
         "waivers": waivers_view(report["waivers"], report["gems"]),
         "trades": {
             "deadline": board["settings"]["deadline"],

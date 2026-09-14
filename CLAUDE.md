@@ -247,6 +247,24 @@ The draft tooling is built and tested. Files:
   says so. As of 2026-09-14: 0, 1 and 3 claims — all rule of thumb.
 - `test_bids.py` — too little history, minimum-bid claims not contested,
   raise/cap, budget ceiling, rival counting.
+- `consistency.py` — week-to-week swings from nflverse weekly stats, LAST
+  season + this season, most recent 17 games (min 6; games under 0.5 pts
+  skipped as cameos/early exits), in the league's scoring: floor (20th pct),
+  ceiling (80th pct), swing (coefficient of variation) → steady / normal /
+  boom-or-bust. Shown, never scored.
+- `matchup.py` — this week's head-to-head. Builds the OPPONENT's best lineup
+  with `lineup.build` (assumes they set their best), win chance from a bell
+  curve whose width comes from every starter's swing (default 0.6 when
+  unmeasured), shown to the nearest 5% — and the favourite/underdog label
+  uses that ROUNDED number so "35%" never reads "toss-up". Favourite ≥65%,
+  underdog ≤35%. Never changes the recommended lineup; only "close calls"
+  (bench within 1.5 pts of a starter at an eligible slot, neither locked):
+  underdog leans to a ceiling 2+ pts higher, favourite to a floor 2+ higher.
+  In `start_sit.py`, the check-up (`coach.build` → `matchup`) and the app
+  (win % on Team and Start/Sit tabs).
+- `test_matchup.py` — profiles, labels, win chance with 9-man lineups (one-man
+  lineups swing too much to test with), underdog/favourite leans, toss-up,
+  far gaps and wrong positions ignored.
 - `test_usage.py` — ID matching, snap trend, preseason rows ignored, shares,
   and missing files.
 - `app.py` + `app_page.py` — the in-season web app, the main way the user
@@ -299,7 +317,9 @@ trades (`trades.py`, `trade_finder.py`). Still missing: matchup-aware logic
 (who I play this week), broader data collection. The UI is built (`app.py`). The user chose FREE
 data sources only, in this order: snap counts and target data (nflverse) —
 DONE, rest-of-season FantasyPros rankings, defence vs position from
-ESPN box scores, league bid history for FAAB, opponent-aware start/sit. Sleeper and bust
+ESPN box scores, league bid history for FAAB — DONE (`bids.py`), opponent-aware
+start/sit — DONE (`matchup.py` + `consistency.py`), then red-zone touches,
+weather, playoff-week schedules. Sleeper and bust
 signals are built (`signals.py`), but only the ones that come from source
 disagreement — age cliffs and suspensions are still not modelled, because
 neither is in the data the board already pulls.

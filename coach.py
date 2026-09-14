@@ -313,6 +313,18 @@ def build(league, team_id, season, use_experts=True, force_refresh=False, progre
     except Exception:
         start_sit_board = None
 
+    step("opponent")
+    head_to_head = None
+    if start_sit_board:
+        try:
+            import matchup
+            head_to_head = matchup.build(
+                league, team_id, first_week, season, start_sit_board,
+                use_experts=use_experts, force_refresh=force_refresh,
+            )
+        except Exception:
+            head_to_head = None
+
     step("waivers")
     waiver_report = waivers.build(
         league, team_id, season, week=first_week,
@@ -344,6 +356,7 @@ def build(league, team_id, season, use_experts=True, force_refresh=False, progre
         # The detail behind every suggestion, for the tools and pages that
         # show it in full.
         "start_sit": start_sit_board,
+        "matchup": head_to_head,
         "waivers": waiver_report,
         "gems": gems,
         "trade_board": trade_board,

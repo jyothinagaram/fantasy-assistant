@@ -20,8 +20,10 @@ import warnings
 
 warnings.filterwarnings("ignore")
 
+import consistency
 import leagues
 import lineup
+import matchup
 import status
 
 
@@ -281,6 +283,23 @@ def print_board(board, rules):
         print(format_player(player))
 
 
+def print_matchup(result):
+    """Head-to-head, and the close calls where it should tip the decision."""
+    print("\n  THIS WEEK'S MATCHUP")
+    print(f"    {matchup.describe(result)}")
+    if not result:
+        return
+    if result["tiebreaks"]:
+        print("    Close calls worth leaning on:")
+        for tip in result["tiebreaks"]:
+            print(f"      consider {tip['start']['name']} over {tip['over']['name']} "
+                  f"({tip['slot']}) -- {tip['reason']}")
+    elif result["situation"] == "toss-up":
+        print("    It's close, so just start the highest projections.")
+    else:
+        print("    No close calls where that changes anything.")
+
+
 def main():
     arguments = parse_arguments()
     credentials = leagues.load_credentials()
@@ -333,6 +352,13 @@ def main():
             print_lock_check(board, rules)
         else:
             print_board(board, rules)
+            try:
+                print_matchup(matchup.build(
+                    league, team_id, week, credentials["season"], board,
+                    use_experts=not arguments.espn_only, force_refresh=arguments.fresh,
+                ))
+            except Exception as error:
+                print(f"\n  (Could not read this week's opponent: {error})")
 
     print()
 
