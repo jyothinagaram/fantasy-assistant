@@ -113,6 +113,20 @@ PAGE_HTML = r"""<!doctype html>
   .spinner { width:26px; height:26px; border:3px solid var(--line); border-top-color:var(--accent);
              border-radius:50%; animation:spin 1s linear infinite; margin:0 auto 12px; }
   @keyframes spin { to { transform:rotate(360deg); } }
+  .guide h2 { margin-top:26px; }
+  .guide .lede { color:var(--dim); margin:4px 0 0; }
+  .guide dl { margin:0; display:grid; gap:12px; }
+  .guide dt { font-weight:600; }
+  .guide dd { margin:2px 0 0; color:var(--dim); font-size:14px; }
+  .guide .job { font-weight:600; color:var(--accent); font-size:13px; margin-bottom:10px; }
+  .guide table { width:100%; border-collapse:collapse; font-size:14px; }
+  .guide td { padding:8px 0; border-top:1px solid var(--line); vertical-align:top; }
+  .guide tr:first-child td { border-top:0; }
+  .guide td:first-child { font-weight:600; width:38%; padding-right:10px; }
+  .guide td:last-child { color:var(--dim); }
+  .guide code { font:12.5px/1.4 ui-monospace,Menlo,monospace; background:var(--panel2); padding:2px 6px; border-radius:6px; overflow-wrap:anywhere; }
+  .guide .cmd { display:grid; gap:2px; padding:8px 0; border-top:1px solid var(--line); }
+  .guide .cmd:first-of-type { border-top:0; }
 </style>
 </head>
 <body>
@@ -128,6 +142,7 @@ PAGE_HTML = r"""<!doctype html>
   <button data-tab="lineup"><span class="icon">☰</span>Start/Sit</button>
   <button data-tab="waivers"><span class="icon">＋</span>Waivers</button>
   <button data-tab="trades"><span class="icon">⇄</span>Trades</button>
+  <button data-tab="guide"><span class="icon">?</span>Guide</button>
 </nav>
 <main id="main"><div class="loading"><div class="spinner"></div>Loading…</div></main>
 
@@ -461,10 +476,74 @@ function wireTrades(d) {
   };
 }
 
+
+// ---------------------------------------------------------------- guide
+
+function renderGuide() {
+  const section = (title, job, items) => `<h2>${title}</h2><div class="card"><div class="job">${job}</div>
+    <dl>${items.map(([t, d]) => `<div><dt>${t}</dt><dd>${d}</dd></div>`).join("")}</dl></div>`;
+  return `<div class="guide">
+    <h2>How this works</h2>
+    <div class="card"><div>This reads your three ESPN leagues and recommends moves. It can't change anything on ESPN — you always make the move in the ESPN app.</div>
+      <div class="muted small" style="margin-top:8px">Open it on this network at <code>${esc(location.host)}</code>. Your Mac must be on and awake.</div></div>
+    ${section("Team", "Where you stand, and what to fix first", [
+      ["How you're doing", "Last week's score and how it ranked in the league, your record, standing, and ESPN's playoff odds."],
+      ["This week's win chance", "Your projected score against your opponent's, and whether you're the favorite, underdog or it's a toss-up."],
+      ["Strengths &amp; weaknesses", "A bar for each position showing if your starters are better or worse than the league's typical team."],
+      ["What to do about it", "Under each weakness: pickups and trades that fix it. Under each strength: trades that turn extra depth into help where you're weak. Tap one to see the details."],
+    ])}
+    ${section("Start/Sit", "Who to play this week", [
+      ["Best lineup", "Built from ESPN's and the experts' projections averaged, with flex spots handled correctly. Changes worth less than half a point aren't suggested."],
+      ["Close calls", "If a bench player is within 1.5 points of a starter: as the underdog, lean to the player with bigger big weeks; as the favorite, lean to the steadier one."],
+      ["“Questionable” players", "Reads practice reports — a full practice on Friday is very different from none all week."],
+      ["Lock countdowns", "Each player locks when his own game kicks off, so Thursday players are decided first."],
+    ])}
+    ${section("Waivers", "Who to add, who to drop, and what to bid", [
+      ["Under the radar", "Running backs, receivers and tight ends whose situation just changed before their stats caught up: a teammate newly hurt, snaps jumping, managers rushing to add him, lots of chances near the end zone."],
+      ["Recommended claims", "For each free agent: the best player of yours to drop, and how many points a week the swap adds to your lineup for the rest of the season."],
+      ["What to bid", "A suggested FAAB bid. Once your league has five claims above the minimum bid, it adjusts to what winning claims actually cost there."],
+    ])}
+    ${section("Trades", "Trades that help both sides — the ones that get accepted", [
+      ["Trade ideas", "One-for-one and two-for-one trades with every team that improve both lineups."],
+      ["Trade checker", "Tick players on each side to see points per week gained or lost, for you and for them."],
+      ["Looks lopsided?", "A warning when a fair trade will look unfair by name, so you know to explain why it helps them."],
+      ["Playoff schedule", "Each player's opponents in weeks 15–17, with a warning for a bye during your playoffs."],
+    ])}
+    <h2>The information behind it</h2>
+    <div class="card"><table><tbody>
+      ${[["Projections", "ESPN and FantasyPros experts, averaged — this week and rest of season"],
+         ["Snaps &amp; targets", "How much a player is really on the field and getting the ball"],
+         ["Red-zone looks", "Who gets the ball inside the 20, where touchdowns happen"],
+         ["Consistency", "Steady week to week, or boom-or-bust"],
+         ["Defense matchup", "Points this week's opponent allows to that position (green = soft, red = tough)"],
+         ["Betting lines", "How many points each NFL team is expected to score"],
+         ["Weather", "Wind 15+ mph, likely rain, or bitter cold at outdoor games"],
+         ["League bids", "What winning waiver claims cost in your league"],
+         ["Practice reports", "Full, limited or no practice for injured players"]]
+        .map(([a, b]) => `<tr><td>${a}</td><td>${b}</td></tr>`).join("")}
+    </tbody></table></div>
+    <h2>Ground rules</h2>
+    <div class="card"><dl>
+      <div><dt>Numbers decide, opinions are shown</dt><dd>News and expert quotes appear word for word, but only hard facts change a recommendation.</dd></div>
+      <div><dt>Nothing counts twice</dt><dd>Matchups and weather are already in the projections, so they're shown as extra context, not added again.</dd></div>
+      <div><dt>It says when data is thin</dt><dd>Early in the season it waits for enough games before labeling a matchup or schedule.</dd></div>
+    </dl></div>
+    <h2>Running it yourself</h2>
+    <div class="card"><div class="muted small" style="margin-bottom:6px">From the fantasy-assistant folder in Terminal — or ask Claude to run any of these.</div>
+      ${[["app.py", "Start this app"], ["team_report.py", "Team check-up as a text report"],
+         ["start_sit.py --lock", "Last-minute check before kickoff"], ["waiver_wire.py", "Waiver pickups, drops and bids"],
+         ["trade_finder.py", "Trade ideas (add --give / --get to check one)"]]
+        .map(([c, d]) => `<div class="cmd"><code>.venv/bin/python ${c}</code><span class="muted small">${d}</span></div>`).join("")}
+      <div class="muted small" style="margin-top:10px">If it stops finding your leagues, your ESPN login values in .env have expired and need re-copying from your browser.</div>
+    </div>
+  </div>`;
+}
+
 // ---------------------------------------------------------------- render
 
 function render() {
   const main = $("#main");
+  if (state.tab === "guide") { main.innerHTML = renderGuide(); return; }
   if (!state.data) {
     main.innerHTML = `<div class="loading"><div class="spinner"></div>Working out this league for the first time.<br>This takes a minute or two.</div>`;
     return;

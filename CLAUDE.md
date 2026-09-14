@@ -298,7 +298,9 @@ The draft tooling is built and tested. Files:
   suggestions that jump to and highlight the matching card on the Waivers or
   Trades tab; strengths list trades that SELL from that depth), **Start/Sit**,
   **Waivers** (under-the-radar first, then claims), **Trades** (ideas + a
-  checkbox trade checker). Phone-first: tabs at the bottom under 760px.
+  checkbox trade checker), **Guide** (plain-language explanation of every
+  feature, data source and ground rule; static, works before data loads —
+  keep it in sync when features change). Phone-first: tabs at the bottom under 760px.
   Each league is built by `coach.build` in ONE background worker thread, one
   league at a time (the scoring-rules quirk), saved to `cache/app_<id>.json`
   and served instantly on restart; the page polls and shows data age, and has
