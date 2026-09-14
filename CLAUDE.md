@@ -144,10 +144,62 @@ The draft tooling is built and tested. Files:
   opponents'), and ranked ADD / DROP / bid suggestions with the facts behind
   each. Won't suggest a claim worth under 0.5 pts/week. A pickup's first week
   is the week after the current one once any of its games has kicked off.
+- `upside.py` — the UNDER THE RADAR section of the waiver report: RB/WR/TE
+  available in the league, under 60% owned, whose situation just changed
+  before their numbers caught up. The user asked for this explicitly: QB
+  pickups are obvious from the ESPN app; hidden skill players are not. Four
+  fact signals add up to an "upside score", each with its own sentence:
+  **opening** (teammate at his position OUT/IR/doubtful/suspended, weighted by
+  that teammate's projection; WR and TE share targets at half weight),
+  **role** (carries+targets per game for RBs, target share for WR/TE),
+  **crowd** (ESPN ownership % change this week), **matchup** (team's implied
+  points from the DraftKings total and spread on ESPN's scoreboard — betting
+  markets price defences and injuries better than any rank). Rules learned
+  from the first real run: an injury is only news if the injured player has
+  played this season (otherwise his teammates' usage already reflects it —
+  30% credit); an opening barely helps a player with under 12% target share
+  or 3 targets a game (40% credit — practice-squad receivers were making the
+  list); matchup alone never qualifies; max 2 players per team. The RotoWire
+  note is printed verbatim, never scored. Each player is marked CLAIM (helps
+  the lineup today, with drop and bid) or STASH (a bet on the situation).
+  The claims list below it is RB/WR/TE only unless `--all-positions`.
+- `test_upside.py` — fresh vs old injury, unused players, the injured player
+  himself, matchup-only, and crowd/bad-matchup arithmetic.
 - `test_waivers.py` — hand-built rosters where the right answer is obvious:
   upgrade drops the worst player, useless pickups aren't suggested, bye cover
   is worth exactly the bye week, IR slot is never dropped, bids never exceed
   budget and never go down as the gain goes up.
+- `trades.py` — the trade engine. Values a trade for EACH team the same way
+  waivers are valued: best lineup every remaining week, before vs after
+  (`waivers.team_value`). The finder tries every 1-for-1, 2-for-1 and 1-for-2
+  with each opponent (players worth 6+ pts in a normal week; 2-player sides
+  use each team's top 8) and keeps only trades that help BOTH lineups by
+  0.5+ pts/week — one-sided offers get rejected or vetoed. Uneven trades:
+  the side receiving more players cuts whoever costs it least; the side
+  receiving fewer is NOT assumed to fill the spot (conservative). **Padding
+  filter:** a trade is dropped if a smaller version of it (fewer given, same
+  or more received) is worth about the same to me — otherwise the list
+  suggests throwing in a player for nothing. An "on paper" line compares raw
+  normal-week points, which is how the other manager and veto voters will
+  judge it, even when lineup maths says it helps them.
+- `trade_finder.py` — the trade command. No arguments: up to 2 ideas per
+  opponent, 10 total, per league. `--league X --give A B --get C` checks one
+  specific trade (offered or received) from both sides.
+- `test_trades.py` — a WR-rich vs RB-rich pair of teams where the win-win is
+  obvious, forced cuts on 2-for-1s, and the padding filter.
+- `coach.py` + `team_report.py` — the team check-up, meant to be run FIRST
+  each week. (1) Results: last week's score, league-wide rank of that score,
+  points left on the bench (best legal lineup from actual points, IR slot
+  excluded), season record built from box scores (ESPN's W-L lags until a
+  week is final), standing and ESPN's playoff %. The bench review is skipped
+  until a week is final — unplayed players show 0 and would be wrongly
+  called bench mistakes. (2) Gaps: each position group's normal-week starter
+  points vs the league median, with rank. (3) Where to focus: the best
+  LINEUP / WAIVER / TRADE move ranked in points per week (lineup marked
+  "this week only"), plus the top under-the-radar STASH; then for each gap
+  (1+ pt below median) the waiver, stash and trade options that fix it. No
+  new maths — everything comes from lineup, waivers, upside and trades, so it
+  always agrees with the detailed tools. Slow: ~1.5 min per league.
 - `check_connection.py` — original sanity check.
 
 Unverified until draft day: whether ESPN publishes picks to its read API
@@ -178,8 +230,10 @@ is flagged but deliberately unscored — it cuts both ways.
 
 Start/sit is now built (`weekly_rankings.py`, `lineup.py`, `status.py`,
 `start_sit.py`), including the pre-kickoff check: `start_sit.py --lock`.
-Waivers are built too (`waivers.py`, `waiver_wire.py`). Still missing:
-matchup-aware and trade logic. Sleeper and bust
+Waivers are built too (`waivers.py`, `waiver_wire.py`, `upside.py`), and
+trades (`trades.py`, `trade_finder.py`). Still missing: matchup-aware logic
+(who I play this week), a UI, and broader data collection — the user wants
+a UI over start/sit, waivers and trades, fed by as much data as possible. Sleeper and bust
 signals are built (`signals.py`), but only the ones that come from source
 disagreement — age cliffs and suspensions are still not modelled, because
 neither is in the data the board already pulls.
@@ -196,7 +250,7 @@ he would be healthy) while no practice at all is -45%.
 
 Rough build order: (1) draft tooling — done, blended with FantasyPros,
 (2) start/sit — done, (3) waiver and pickup/drop recommendations — done (bids still heuristic),
-(4) advanced matchup- and trade-aware recommendations.
+(4) trades — done; matchup-aware still to do, (5) UI and more data sources.
 
 Known library quirk: `espn_api` keeps scoring rules in a shared dictionary,
 so connecting to two leagues in one process makes the first one report the
@@ -216,10 +270,11 @@ anything that assumes one format is a bug:
 | League | ID | My team | Rules | Waivers | Trades |
 |---|---|---|---|---|---|
 | The Boyz are Back | 930020 | 2 | half PPR, **2 flex**, 8 playoff teams | FAAB **$100**, min bid $0, 12:00, every day but Tue | **no deadline**, 4 veto votes |
-| D.C.F. | 1648293 | 10 | **full PPR**, 1 flex, 8 playoff teams | FAAB **$75**, min bid $1, 11:00, every day but Sun/Tue | deadline Dec 4, 4 veto votes |
-| Only Sig Chi's, Mkay? | 946985 | 8 | half PPR, 1 flex, **6 playoff teams** | FAAB **$100**, min bid $1, 12:00, every day but Mon/Tue | deadline Dec 2, **0 veto votes** |
+| D.C.F. | 1648293 | 10 | **full PPR**, 1 flex, **6 playoff teams** | FAAB **$75**, min bid $1, 11:00, every day but Sun/Tue | deadline Dec 4, 4 veto votes |
+| Only Sig Chi's, Mkay? | 946985 | 8 | half PPR, 1 flex, 8 playoff teams | FAAB **$100**, min bid $1, 12:00, every day but Mon/Tue | deadline Dec 2, **0 veto votes** |
 
-Read from ESPN on 2026-09-09, not assumed. Notes that matter:
+Read from ESPN on 2026-09-09, not assumed. (Playoff counts corrected
+2026-09-14 from `scheduleSettings.playoffTeamCount`: D.C.F. 6, Sig Chi's 8.) Notes that matter:
 
 - **All three are FAAB**, so there is no waiver-priority mode to build.
 - **None of them use the classic Tuesday-night wire.** Each processes almost
