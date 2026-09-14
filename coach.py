@@ -340,4 +340,33 @@ def build(league, team_id, season, use_experts=True, force_refresh=False, progre
         "gaps": gaps,
         "moves": moves,
         "fixes": fixes,
+        "strengths": strengths(gaps, trade_ideas),
+        # The detail behind every suggestion, for the tools and pages that
+        # show it in full.
+        "start_sit": start_sit_board,
+        "waivers": waiver_report,
+        "gems": gems,
+        "trade_board": trade_board,
+        "trade_ideas": trade_ideas,
     }
+
+
+def strengths(gaps, trade_ideas):
+    """
+    Positions clearly ahead of the league, with the trades that SELL from
+    them. Depth you cannot start is only worth something once it is traded
+    for a position you need.
+    """
+    out = []
+    for row in sorted(gaps, key=lambda r: r["difference"], reverse=True):
+        if row["difference"] < GAP_POINTS:
+            continue
+        positions = FIXED_BY[row["group"]]
+        out.append({
+            "strength": row,
+            "trades": [
+                t for t in trade_ideas
+                if any(p["position"] in positions for p in t["give"])
+            ][:2],
+        })
+    return out

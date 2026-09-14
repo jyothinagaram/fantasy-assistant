@@ -200,6 +200,21 @@ The draft tooling is built and tested. Files:
   (1+ pt below median) the waiver, stash and trade options that fix it. No
   new maths — everything comes from lineup, waivers, upside and trades, so it
   always agrees with the detailed tools. Slow: ~1.5 min per league.
+- `app.py` + `app_page.py` — the in-season web app, the main way the user
+  wants to use the tool. `.venv/bin/python app.py` opens it in the browser
+  and prints a phone address (same Wi-Fi; binds 0.0.0.0 unless
+  `APP_LOCAL_ONLY=1`). Tabs: **Team** (home — record/standing, position bars
+  vs league, biggest WEAKNESSES then STRENGTHS, each with waiver/stash/trade
+  suggestions that jump to and highlight the matching card on the Waivers or
+  Trades tab; strengths list trades that SELL from that depth), **Start/Sit**,
+  **Waivers** (under-the-radar first, then claims), **Trades** (ideas + a
+  checkbox trade checker). Phone-first: tabs at the bottom under 760px.
+  Each league is built by `coach.build` in ONE background worker thread, one
+  league at a time (the scoring-rules quirk), saved to `cache/app_<id>.json`
+  and served instantly on restart; the page polls and shows data age, and has
+  Refresh. The trade checker values trades from a server-side copy of every
+  roster's valuation fields, so it never re-asks ESPN. No build step, no new
+  dependencies. `APP_NO_BROWSER=1` skips opening a browser (for testing).
 - `check_connection.py` — original sanity check.
 
 Unverified until draft day: whether ESPN publishes picks to its read API
@@ -232,8 +247,10 @@ Start/sit is now built (`weekly_rankings.py`, `lineup.py`, `status.py`,
 `start_sit.py`), including the pre-kickoff check: `start_sit.py --lock`.
 Waivers are built too (`waivers.py`, `waiver_wire.py`, `upside.py`), and
 trades (`trades.py`, `trade_finder.py`). Still missing: matchup-aware logic
-(who I play this week), a UI, and broader data collection — the user wants
-a UI over start/sit, waivers and trades, fed by as much data as possible. Sleeper and bust
+(who I play this week), broader data collection. The UI is built (`app.py`). The user chose FREE
+data sources only, in this order: snap counts and route/target data
+(nflverse), rest-of-season FantasyPros rankings, defence vs position from
+ESPN box scores, league bid history for FAAB, opponent-aware start/sit. Sleeper and bust
 signals are built (`signals.py`), but only the ones that come from source
 disagreement — age cliffs and suspensions are still not modelled, because
 neither is in the data the board already pulls.
@@ -251,6 +268,14 @@ he would be healthy) while no practice at all is -45%.
 Rough build order: (1) draft tooling — done, blended with FantasyPros,
 (2) start/sit — done, (3) waiver and pickup/drop recommendations — done (bids still heuristic),
 (4) trades — done; matchup-aware still to do, (5) UI and more data sources.
+
+**Next-week projections bug (fixed 2026-09-14).** `league.teams[...].roster`
+only carries projections for `league.current_week`. Planning for the next
+week from it gave every ROSTERED player 0 while free agents (fetched per
+week) had real numbers — inflating every pickup's gain and emptying next
+week's start/sit. `lineup.rosters_for_week(league, week)` re-reads rosters via
+the `mRoster` view with `scoringPeriodId=week`; lineup, waivers and trades all
+use it. Anything new that plans a future week must too.
 
 Known library quirk: `espn_api` keeps scoring rules in a shared dictionary,
 so connecting to two leagues in one process makes the first one report the
