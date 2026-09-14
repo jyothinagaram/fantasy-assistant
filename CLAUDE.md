@@ -124,6 +124,30 @@ The draft tooling is built and tested. Files:
 - `test_status.py` — tests the practice reader, which is the riskiest code in
   the project: everywhere else the tool reads numbers, here it reads English.
   Mostly tests sentences that must NOT match.
+- `waivers.py` — the waiver engine. Values every possible swap (add this
+  free agent, drop that player of mine) by playing out each remaining
+  regular-season week, solving the best lineup each week with the start/sit
+  solver, and summing the points. The gain is the pickup's value, so starting
+  potential, bye-week cover and each league's slots are all handled by one
+  number. The first playable week uses the start/sit score (ESPN + experts,
+  injuries); later weeks use a per-game value that blends ESPN's projection
+  with points actually scored (actual scoring counts as much as the
+  projection after 4 games; 10 games for K and D/ST, which are too noisy).
+  IR and suspended players are assumed to miss 4 weeks (ESPN gives no return
+  date). Players in the IR slot are never suggested as drops. **Ties are
+  common** — two bench players who never start cost the same to drop — so
+  ties drop the weaker player. FAAB bids are a flagged heuristic: a share of
+  budget *remaining*, tiered by points/week gained, x1.5 if the player is over
+  50% owned across ESPN. Recalibrate once real bid history exists.
+- `waiver_wire.py` — the waiver command. `.venv/bin/python waiver_wire.py`
+  prints, per league: waiver schedule, FAAB left (yours and the richest
+  opponents'), and ranked ADD / DROP / bid suggestions with the facts behind
+  each. Won't suggest a claim worth under 0.5 pts/week. A pickup's first week
+  is the week after the current one once any of its games has kicked off.
+- `test_waivers.py` — hand-built rosters where the right answer is obvious:
+  upgrade drops the worst player, useless pickups aren't suggested, bye cover
+  is worth exactly the bye week, IR slot is never dropped, bids never exceed
+  budget and never go down as the gain goes up.
 - `check_connection.py` — original sanity check.
 
 Unverified until draft day: whether ESPN publishes picks to its read API
@@ -154,7 +178,8 @@ is flagged but deliberately unscored — it cuts both ways.
 
 Start/sit is now built (`weekly_rankings.py`, `lineup.py`, `status.py`,
 `start_sit.py`), including the pre-kickoff check: `start_sit.py --lock`.
-Still missing: waiver, matchup-aware and trade logic. Sleeper and bust
+Waivers are built too (`waivers.py`, `waiver_wire.py`). Still missing:
+matchup-aware and trade logic. Sleeper and bust
 signals are built (`signals.py`), but only the ones that come from source
 disagreement — age cliffs and suspensions are still not modelled, because
 neither is in the data the board already pulls.
@@ -170,7 +195,7 @@ why full participation is only +10% (he must never end up worth more than
 he would be healthy) while no practice at all is -45%.
 
 Rough build order: (1) draft tooling — done, blended with FantasyPros,
-(2) start/sit — done, (3) waiver and pickup/drop recommendations,
+(2) start/sit — done, (3) waiver and pickup/drop recommendations — done (bids still heuristic),
 (4) advanced matchup- and trade-aware recommendations.
 
 Known library quirk: `espn_api` keeps scoring rules in a shared dictionary,
