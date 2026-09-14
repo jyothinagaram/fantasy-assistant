@@ -22,9 +22,10 @@ What a player is worth in a given week:
   * The first week the pickup could play: this week's projections, ESPN and
     FantasyPros averaged, injuries applied -- exactly what start/sit uses.
     That is where fresh news shows up.
-  * Every week after: his season per-game average. Early on that is mostly
-    ESPN's projection; as games are played, what he has actually scored
-    takes over a little more each week (see `per_game_value`).
+  * Every week after: his per-game value for the rest of the season. That
+    starts as ESPN's projection and FantasyPros' rest-of-season projection
+    averaged 50/50 (see `ros_rankings.py`); as games are played, what he has
+    actually scored takes over a little more each week (`per_game_value`).
 
 FACTS VOTE, PROSE DOES NOT -- the same rule as the rest of the project.
 Projections, points scored, bye weeks and injury designations move the
@@ -38,6 +39,11 @@ bid should be recalibrated once the season has produced some bid history.
 import lineup
 import rankings
 
+
+# ESPN's season projection and the experts' rest-of-season projection count
+# equally, as the two weekly projections do in start/sit.
+ESPN_WEIGHT = 0.5
+EXPERT_WEIGHT = 0.5
 
 # How many games of real scoring it takes before a player's actual per-game
 # average counts as much as his projection. Low enough that a genuine
@@ -91,8 +97,15 @@ def per_game_value(player):
     His projection and his actual per-game average, blended. Before he has
     played, it is all projection. After four games it is half and half, and
     it leans further toward what he has really done after that.
+
+    "His projection" is ESPN's and the FantasyPros rest-of-season consensus,
+    averaged equally -- neither source has earned the tiebreak -- or ESPN's
+    alone when FantasyPros does not rank him.
     """
     projected = player.get("season_projected_avg") or 0.0
+    experts = player.get("ros_expert_avg")
+    if experts is not None:
+        projected = ESPN_WEIGHT * projected + EXPERT_WEIGHT * experts
     actual = player.get("season_actual_avg")
     games = player.get("games_played") or 0
     if not games or actual is None:
@@ -375,6 +388,7 @@ def build(league, team_id, season, week=None, use_experts=True, force_refresh=Fa
         for player in everyone:
             player.setdefault("weekly_projection", None)
     lineup.score(everyone, first_week)
+    ros_summary = attach_ros(league, season, everyone, first_week, use_experts, force_refresh)
 
     roster_size = sum(
         int(count or 0) for count in league.settings.position_slot_counts.values()
@@ -413,4 +427,17 @@ def build(league, team_id, season, week=None, use_experts=True, force_refresh=Fa
         "swaps": swaps,
         "roster_full": roster_full,
         "expert_summary": expert_summary,
+        "ros_summary": ros_summary,
     }
+
+
+def attach_ros(league, season, players, first_week, use_experts=True, force_refresh=False):
+    """Rest-of-season expert projections onto every player. None if unavailable."""
+    if not use_experts:
+        return None
+    try:
+        import ros_rankings
+        by_position = ros_rankings.load_for_league(league, season, force_refresh)
+        return ros_rankings.attach(players, by_position, first_week) if by_position else None
+    except Exception:
+        return None

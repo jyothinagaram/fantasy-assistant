@@ -214,6 +214,16 @@ The draft tooling is built and tested. Files:
   the ball comes his way** (10%+ target share, or 8+ touches for RBs) —
   Rashod Bateman made the list on 78% snaps and 4% of targets, a blocker.
   nflverse's target share replaces the ESPN-pool estimate when present.
+- `ros_rankings.py` — FantasyPros REST-OF-SEASON consensus (`ros-*.php`
+  pages, per scoring format for RB/WR/TE), cached 12h. Uses `r2p_pts` (their
+  projected rest-of-season points) divided by games left (weeks to 18, minus
+  a bye still to come). **Calibrated per position**: FantasyPros totals ran
+  ~10% above ESPN at every position (K ~1%) — scale, not opinion — so each
+  position is rescaled so its median player matches ESPN; otherwise ranked
+  players get a free boost over unranked ones. `waivers.per_game_value` now
+  blends ESPN season projection and this 50/50 (ESPN alone if unranked), so
+  waivers, trades, gaps and the app all use it. Shown as "rest of season:
+  experts X/game (WR22), ESPN Y/game".
 - `test_usage.py` — ID matching, snap trend, preseason rows ignored, shares,
   and missing files.
 - `app.py` + `app_page.py` — the in-season web app, the main way the user

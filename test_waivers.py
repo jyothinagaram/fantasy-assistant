@@ -91,6 +91,35 @@ def test_one_big_game_does_not_take_over():
     assert waivers.per_game_value(fluky_defense) < 8, waivers.per_game_value(fluky_defense)
 
 
+def test_expert_rest_of_season_blends_with_espn():
+    player = make("Blend", "WR", 10)
+    player["ros_expert_avg"] = 14.0
+    assert abs(waivers.per_game_value(player) - 12.0) < 1e-9
+    player["ros_expert_avg"] = None
+    assert waivers.per_game_value(player) == 10
+
+
+def test_games_left_counts_the_bye_only_if_still_to_come():
+    import ros_rankings
+    assert ros_rankings.games_left(2, 9) == 16
+    assert ros_rankings.games_left(10, 9) == 9
+    assert ros_rankings.games_left(19, None) == 0
+
+
+def test_expert_scale_is_removed_but_opinion_kept():
+    import ros_rankings
+    players = []
+    for n in range(6):
+        p = make(f"WR{n}", "WR", 10)
+        p["ros_expert_avg"] = 11.0            # experts 10% high across the board
+        players.append(p)
+    players[0]["ros_expert_avg"] = 16.5       # ...but genuinely higher on this one
+    scales = ros_rankings.calibrate(players)
+    assert abs(scales["WR"] - 1.1) < 1e-9, scales
+    assert abs(players[1]["ros_expert_avg"] - 10.0) < 0.01   # scale gone
+    assert abs(players[0]["ros_expert_avg"] - 15.0) < 0.01   # opinion kept
+
+
 def test_bids_are_sane():
     assert waivers.suggest_bid(0.2, 100, 1) == 1, "not worth a claim: minimum bid"
     assert waivers.suggest_bid(6.0, 100, 1) == 25

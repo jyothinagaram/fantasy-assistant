@@ -255,6 +255,7 @@ def build(league, team_id, season, week=None, use_experts=True, force_refresh=Fa
         for player in everyone:
             player.setdefault("weekly_projection", None)
     lineup.score(everyone, first_week)
+    ros_summary = waivers.attach_ros(league, season, everyone, first_week, use_experts, force_refresh)
 
     return {
         "league_name": league.settings.name,
@@ -266,6 +267,7 @@ def build(league, team_id, season, week=None, use_experts=True, force_refresh=Fa
         "rosters": rosters,
         "settings": trade_settings(league),
         "expert_summary": expert_summary,
+        "ros_summary": ros_summary,
     }
 
 

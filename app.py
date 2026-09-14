@@ -71,6 +71,7 @@ def player_view(p):
         "owned": round(p.get("percent_owned") or 0),
         "opponent": p.get("opponent"),
         "usage": usage.describe(p.get("usage")),
+        "ros_rank": p.get("ros_pos_rank"),
     }
 
 
@@ -238,7 +239,7 @@ def private_board(board):
     """
     keep = ("player_id", "name", "position", "pro_team", "injury_status", "current_slot",
             "bye_week", "season_projected_avg", "season_actual_avg", "games_played",
-            "score", "percent_owned", "usage")
+            "score", "percent_owned", "usage", "ros_expert_avg")
     return {
         "team_id": board["team_id"],
         "slots": board["slots"],

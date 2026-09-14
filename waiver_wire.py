@@ -182,6 +182,12 @@ def reasons(swap, report):
         f"this week {this_week:.1f} pts; normal week about "
         f"{waivers.per_game_value(add):.1f}"
     )
+    if add.get("ros_expert_avg") is not None:
+        notes.append(
+            f"rest of season: experts {add['ros_expert_avg']:.1f}/game"
+            f"{' (' + add['ros_pos_rank'] + ')' if add.get('ros_pos_rank') else ''}, "
+            f"ESPN {add['season_projected_avg']:.1f}/game"
+        )
     if add.get("games_played"):
         notes.append(
             f"has actually averaged {add['season_actual_avg']:.1f} over "
