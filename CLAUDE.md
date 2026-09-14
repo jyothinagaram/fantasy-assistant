@@ -280,6 +280,14 @@ The draft tooling is built and tested. Files:
   and projections move with forecasts). In start/sit reasons, "watch" list,
   and the app.
 - `test_weather.py` — thresholds, wording, state matching, affected positions.
+- `playoffs.py` — each player's NFL opponents in the league's fantasy
+  playoff weeks (from settings: reg season + ceil(log2(playoff teams))
+  rounds x period length → weeks 15-17 for all three leagues), from ESPN's
+  `proTeamSchedules_wl`. Flags a BYE in a playoff week; rates the run
+  soft/neutral/tough by average `defense.py` rank, but only once every
+  opponent defence has 4+ games. Shown on trades (CLI + app), never scored.
+- `test_playoffs.py` — playoff weeks per settings, bye flag, rating waits
+  for games, unknown teams.
 - `test_usage.py` — ID matching, snap trend, preseason rows ignored, shares,
   and missing files.
 - `app.py` + `app_page.py` — the in-season web app, the main way the user
@@ -335,7 +343,8 @@ DONE, rest-of-season FantasyPros rankings, defence vs position from
 ESPN box scores, league bid history for FAAB — DONE (`bids.py`), opponent-aware
 start/sit — DONE (`matchup.py` + `consistency.py`), red-zone touches — DONE
 (`redzone.py`), weather — DONE (`weather.py`),
-then playoff-week schedules. Sleeper and bust
+playoff-week schedules — DONE (`playoffs.py`). The planned free-data list
+is complete as of 2026-09-14. Sleeper and bust
 signals are built (`signals.py`), but only the ones that come from source
 disagreement — age cliffs and suspensions are still not modelled, because
 neither is in the data the board already pulls.

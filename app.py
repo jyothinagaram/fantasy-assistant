@@ -77,6 +77,8 @@ def player_view(p):
         "ros_rank": p.get("ros_pos_rank"),
         "matchup": p.get("matchup"),
         "matchup_quality": p.get("matchup_quality"),
+        "playoffs": p.get("playoffs"),
+        "playoff_bye": bool(p.get("playoff_bye")),
     }
 
 

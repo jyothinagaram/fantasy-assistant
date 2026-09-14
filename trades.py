@@ -256,6 +256,8 @@ def build(league, team_id, season, week=None, use_experts=True, force_refresh=Fa
             player.setdefault("weekly_projection", None)
     lineup.score(everyone, first_week)
     ros_summary = waivers.attach_ros(league, season, everyone, first_week, use_experts, force_refresh)
+    import playoffs
+    playoffs.attach(league, season, everyone)  # shown in trades, never scored
 
     return {
         "league_name": league.settings.name,

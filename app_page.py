@@ -402,7 +402,8 @@ function renderWaivers(d) {
 function tradeCard(t, id) {
   const names = (list) => list.map(p => `<div style="font-weight:600">${esc(p.name)}${p.injury ? ` <span class="pill warn">${esc(p.injury)}</span>` : ""}</div>
     <div class="muted small">${esc(p.position)} · ${p.normal_week?.toFixed(1) ?? "–"} pts/wk</div>
-    ${p.usage ? `<div class="muted small">${esc(p.usage)}</div>` : ""}`).join("");
+    ${p.usage ? `<div class="muted small">${esc(p.usage)}</div>` : ""}
+    ${p.playoffs ? `<div class="small ${p.playoff_bye ? "bad" : "muted"}">${esc(p.playoffs)}</div>` : ""}`).join("");
   const verdict = (n) => n >= 2 ? "good" : n >= 0.5 ? "good" : n > -0.5 ? "" : "bad";
   let lopsided = "";
   if (t.paper_get > 1.25 * t.paper_give) lopsided = `On paper you get ${t.paper_get} pts/wk of players for ${t.paper_give} — they may see it as lopsided, so explain why it helps them.`;

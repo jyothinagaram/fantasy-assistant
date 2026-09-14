@@ -82,6 +82,10 @@ def print_trade(result, weeks, number=None):
         print(f"{pad}They would need to drop: {', '.join(p['name'] for p in result['they_cut'])}")
     if len(result["give"]) > len(result["get"]):
         print(f"{pad}(You also open a roster spot for a free agent -- not counted above.)")
+    for player in result["give"] + result["get"]:
+        if player.get("playoffs"):
+            flag = "  <<" if player.get("playoff_bye") else ""
+            print(f"{pad}{player['name']}: {player['playoffs']}{flag}")
     print(f"{pad}(Numbers after each name: what he scores in a normal week.)")
 
 
