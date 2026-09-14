@@ -348,7 +348,8 @@ def build(league, team_id, season, week=None, use_experts=True, force_refresh=Fa
     byes = bye_weeks(league)
     team = lineup.my_team(league, team_id)
 
-    mine = [as_player(p, first_week, byes) for p in team.roster]
+    rosters = lineup.rosters_for_week(league, first_week)
+    mine = [as_player(p, first_week, byes) for p in rosters.get(team_id, team.roster)]
     pool = league.free_agents(week=first_week, size=FREE_AGENT_POOL)
     slots = lineup.open_slots(league)
     free_agents = [

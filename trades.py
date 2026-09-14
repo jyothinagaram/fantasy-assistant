@@ -225,11 +225,15 @@ def build(league, team_id, season, week=None, use_experts=True, force_refresh=Fa
     first_week = week or waivers.first_playable_week(league, season)
     weeks = list(range(first_week, league.settings.reg_season_count + 1))
     byes = waivers.bye_weeks(league)
+    week_rosters = lineup.rosters_for_week(league, first_week)
 
     rosters = {
         team.team_id: {
             "team": team,
-            "players": [waivers.as_player(p, first_week, byes) for p in team.roster],
+            "players": [
+                waivers.as_player(p, first_week, byes)
+                for p in week_rosters.get(team.team_id, team.roster)
+            ],
         }
         for team in league.teams
     }

@@ -92,6 +92,36 @@ def my_team(league, team_id):
     raise LookupError(f"no team {team_id} in {league.settings.name}")
 
 
+def rosters_for_week(league, week):
+    """
+    Every team's roster as ESPN sees it for one specific week.
+
+    The rosters the ESPN library loads on connecting carry projections for
+    the CURRENT week only. Asking about next week from those gives every
+    rostered player zero -- which quietly made every free agent look like an
+    upgrade and emptied next week's start/sit. So rosters are re-read for the
+    week actually being planned. Falls back to the loaded rosters for the
+    current week, or if ESPN will not answer.
+
+    Returns {team_id: [ESPN player objects]}.
+    """
+    loaded = {team.team_id: team.roster for team in league.teams}
+    if week == league.current_week:
+        return loaded
+    try:
+        from espn_api.football.player import Player
+
+        data = league.espn_request.league_get(
+            params={"view": ["mRoster"], "scoringPeriodId": week}
+        )
+        return {
+            team["id"]: [Player(entry, league.year) for entry in team["roster"]["entries"]]
+            for team in data.get("teams") or []
+        } or loaded
+    except Exception:
+        return loaded
+
+
 def weekly_projection(player, week):
     """
     ESPN's projection for one player in one week.
@@ -108,14 +138,17 @@ def weekly_projection(player, week):
         return 0.0
 
 
-def roster(league, team_id, week):
+def roster(league, team_id, week, rosters=None):
     """
     Your roster as plain dictionaries, in the same shape the rest of this
     project already uses, so the existing commentary and signal code can
     read them without translation.
     """
+    rosters = rosters or rosters_for_week(league, week)
+    if team_id not in rosters:
+        raise LookupError(f"no team {team_id} in {league.settings.name}")
     players = []
-    for player in my_team(league, team_id).roster:
+    for player in rosters[team_id]:
         slot = getattr(player, "lineupSlot", "") or ""
         players.append(
             {
