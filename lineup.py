@@ -390,6 +390,10 @@ def reasons(player):
     if player.get("weekly_pos_rank"):
         notes.append(f"expert rank {player['weekly_pos_rank']}")
 
+    if player.get("matchup_quality"):
+        # Shown only. The projections above already price the opponent in.
+        notes.append(f"{player['matchup_quality']} matchup -- {player['matchup']}")
+
     return notes
 
 
@@ -422,6 +426,9 @@ def build(league, team_id, week, season, use_experts=True, force_refresh=False):
         usage.attach(players, usage.load(season))
     except Exception:
         pass  # snap and target data is shown, never scored here
+
+    import defense
+    defense.attach_for_league(league, season, week, players)  # shown, never scored
 
     expert_summary = None
     scoring = None

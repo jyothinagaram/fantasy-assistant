@@ -224,6 +224,18 @@ The draft tooling is built and tested. Files:
   blends ESPN season projection and this 50/50 (ESPN alone if unranked), so
   waivers, trades, gaps and the app all use it. Shown as "rest of season:
   experts X/game (WR22), ESPN Y/game".
+- `defense.py` — defence vs position: fantasy points each defence allowed
+  per game to QB/RB/WR/TE, from nflverse weekly stats (`opponent_team`,
+  `fantasy_points` / `_ppr`; half PPR = their average), in the league's own
+  format, only from weeks BEFORE the one being previewed. Ranked 1 = most
+  generous; pulled toward league average with a 3-game prior. **Shown, never
+  scored** — ESPN and FantasyPros projections already price in the opponent,
+  so scoring it would count the defence twice. "soft"/"tough" labels (top/
+  bottom 8) only once a defence has 2+ games; one game is mostly who it
+  played. Appears in start/sit reasons, waiver reasons, under-the-radar and
+  the app (green soft, red tough).
+- `test_defense.py` — crediting and ranking, previewed week excluded, scoring
+  formats, the prior, and no label after one game.
 - `test_usage.py` — ID matching, snap trend, preseason rows ignored, shares,
   and missing files.
 - `app.py` + `app_page.py` — the in-season web app, the main way the user

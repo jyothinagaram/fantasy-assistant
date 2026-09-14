@@ -407,6 +407,8 @@ def find(league, season, week):
             found.append(player)
 
     found.sort(key=lambda p: p["upside"], reverse=True)
+    import defense
+    defense.attach_for_league(league, season, week, found)  # shown, never scored
     per_team, trimmed = {}, []
     for player in found:
         per_team[player["team"]] = per_team.get(player["team"], 0) + 1

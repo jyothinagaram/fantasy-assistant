@@ -377,6 +377,8 @@ def build(league, team_id, season, week=None, use_experts=True, force_refresh=Fa
         usage.attach(everyone, usage.load(season))
     except Exception:
         pass  # snap and target data is shown, never required
+    import defense
+    defense.attach_for_league(league, season, first_week, everyone)
     expert_summary = None
     if use_experts:
         _, by_position = weekly_rankings.load_for_league(

@@ -78,6 +78,8 @@ def print_under_the_radar(report, gems, top):
         used = usage.describe(player.get("usage"))
         if used:
             print(f"       - usage: {used}")
+        if player.get("matchup"):
+            print(f"       - {player['matchup']}")
 
         swap = by_id.get(player["player_id"])
         if swap and swap["gain_per_week"] >= waivers.WORTH_A_CLAIM:
@@ -197,6 +199,8 @@ def reasons(swap, report):
     used = usage.describe(add.get("usage"))
     if used:
         notes.append(f"usage last game: {used}")
+    if add.get("matchup"):
+        notes.append(add["matchup"])
     status = add.get("injury_status") or "ACTIVE"
     if status in {"INJURY_RESERVE", "SUSPENSION"}:
         notes.append(

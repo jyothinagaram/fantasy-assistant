@@ -136,6 +136,7 @@ const state = { leagues: [], leagueId: null, data: null, tab: "home", poll: null
 const $ = (s) => document.querySelector(s);
 const esc = (t) => String(t ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const signed = (n, d=1) => (n > 0 ? "+" : "") + Number(n).toFixed(d);
+const matchupLine = (p) => p.matchup ? `<div class="small ${p.matchup_quality === "soft" ? "good" : p.matchup_quality === "tough" ? "bad" : "muted"}">${esc(p.matchup)}</div>` : "";
 const ordinal = (n) => { if (n == null) return "?"; const s = ["th","st","nd","rd"], v = n % 100; return n + (s[(v-20)%10] || s[v] || s[0]); };
 
 function remember(key, value) { try { localStorage.setItem(key, value); } catch (e) {} }
@@ -305,7 +306,7 @@ function playerRow(p, slotLabel) {
   return `<div class="player">${slotLabel !== undefined ? `<div class="slot">${esc(slotLabel || "")}</div>` : ""}
     <div class="who"><div class="name">${esc(p.name)}${flag}</div>
     <div class="muted small">${esc(p.position)} · ${esc(p.team)}${p.opponent ? " vs " + esc(p.opponent) : ""} · ESPN ${p.espn?.toFixed(1) ?? "–"}${experts} ${lock}</div>
-    ${p.usage ? `<div class="muted small">${esc(p.usage)}</div>` : ""}</div>
+    ${p.usage ? `<div class="muted small">${esc(p.usage)}</div>` : ""}${matchupLine(p)}</div>
     <div class="pts">${p.this_week?.toFixed(1) ?? "–"}</div></div>`;
 }
 
@@ -362,7 +363,7 @@ function renderWaivers(d) {
     html += `<div class="card" id="gem-${g.id}"><div class="row">
       <div><b>${esc(g.name)}</b> <span class="muted">${esc(g.position)} · ${esc(g.team)}${g.opponent ? " vs " + esc(g.opponent) : ""}</span></div>
       <span class="pill accent">UPSIDE ${g.upside.toFixed(1)}</span></div>
-      <div class="muted small">owned in ${g.owned}% of ESPN leagues${g.usage ? " · " + esc(g.usage) : ""}</div>
+      <div class="muted small">owned in ${g.owned}% of ESPN leagues${g.usage ? " · " + esc(g.usage) : ""}</div>${matchupLine(g)}
       <ul class="reasons">${g.reasons.map(r => `<li>${esc(r)}</li>`).join("")}</ul>
       ${g.note ? `<div class="quote">“${esc(g.note)}”${g.note_date ? `<div class="small" style="font-style:normal;margin-top:4px">— ${esc(g.note_date)}</div>` : ""}</div>` : ""}
       ${g.claim ? claimBlock(g.claim) : `<div class="muted small" style="margin-top:10px"><span class="pill">STASH</span> doesn't beat your players on today's numbers — a $${w.minimum_bid} bid if you have a spare bench spot.</div>`}</div>`;

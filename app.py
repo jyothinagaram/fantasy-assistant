@@ -72,6 +72,8 @@ def player_view(p):
         "opponent": p.get("opponent"),
         "usage": usage.describe(p.get("usage")),
         "ros_rank": p.get("ros_pos_rank"),
+        "matchup": p.get("matchup"),
+        "matchup_quality": p.get("matchup_quality"),
     }
 
 
