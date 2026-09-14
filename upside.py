@@ -99,6 +99,11 @@ NEXT_IN_LINE_SNAPS = 0.40
 SNAPS_NEED_TARGET_SHARE = 0.10   # receivers and tight ends
 SNAPS_NEED_TOUCHES = 8.0         # running backs, carries + targets a game
 
+# A quarter of his team's red-zone chances is a real touchdown role. Small
+# vote: touchdowns follow red-zone volume, but only a few plays a game.
+RED_ZONE_SHARE = 0.25
+RED_ZONE_MIN_OPPS = 3
+
 # A player needs at least this much evidence to be listed.
 MINIMUM_UPSIDE = 2.0
 
@@ -314,6 +319,13 @@ def score_player(player, injured_by_team, shares, totals):
         elif use["snap_pct"] >= STARTER_SNAPS:
             points += 0.5
             reasons.append(f"ROLE: on the field for {use['snap_pct']:.0%} of snaps")
+
+    if (use.get("red_zone_share") or 0) >= RED_ZONE_SHARE and (use.get("red_zone_opps") or 0) >= RED_ZONE_MIN_OPPS:
+        points += 0.5
+        reasons.append(
+            f"ROLE: {use['red_zone_share']:.0%} of his team's red-zone chances "
+            f"({use['red_zone_opps']} carries/targets inside the 20)"
+        )
 
     if games:
         touches = (player["carries"] + player["targets"]) / games

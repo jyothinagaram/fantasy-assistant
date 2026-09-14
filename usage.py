@@ -178,7 +178,15 @@ def load(season):
     players = download("players", season)
     if not players:
         return {}
-    return build(download("snaps", season), download("stats", season), players)
+    table = build(download("snaps", season), download("stats", season), players)
+    try:
+        import redzone
+        for espn, red in redzone.load(season).items():
+            if espn in table:
+                table[espn].update(red)
+    except Exception:
+        pass  # red-zone numbers are extra; usage stands without them
+    return table
 
 
 def attach(players, by_espn_id):
@@ -199,8 +207,17 @@ def describe(summary):
         if trend is not None and abs(trend) >= 0.05:
             text += f" ({'up' if trend > 0 else 'down'} {abs(trend) * 100:.0f} pts)"
         parts.append(text)
-    if summary.get("target_share"):
+    if (summary.get("target_share") or 0) > 0:
         parts.append(f"{summary['target_share']:.0%} of targets")
-    if summary.get("air_yards_share"):
+    # Short passes behind the line can make a running back's air-yards share
+    # negative, which reads as nonsense -- only a positive share is shown.
+    if (summary.get("air_yards_share") or 0) > 0:
         parts.append(f"{summary['air_yards_share']:.0%} of air yards")
+    if summary.get("red_zone_opps"):
+        text = f"{summary['red_zone_opps']} red-zone looks"
+        if summary.get("red_zone_share"):
+            text += f" ({summary['red_zone_share']:.0%} of team's)"
+        if summary.get("goal_line_opps"):
+            text += f", {summary['goal_line_opps']} inside the 5"
+        parts.append(text)
     return " · ".join(parts) or None

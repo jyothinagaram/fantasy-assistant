@@ -265,6 +265,11 @@ The draft tooling is built and tested. Files:
 - `test_matchup.py` — profiles, labels, win chance with 9-man lineups (one-man
   lineups swing too much to test with), underdog/favourite leans, toss-up,
   far gaps and wrong positions ignored.
+- `redzone.py` — red-zone (inside the 20) and goal-line (inside the 5)
+  carries+targets per player and share of team red-zone chances, from
+  nflverse play-by-play (`play_by_play_<season>.csv.gz`, 6h cache). Merged
+  into the `usage.py` summary so it appears in every usage line; in
+  `upside.py` 25%+ of team red-zone chances (3+ opportunities) is +0.5.
 - `test_usage.py` — ID matching, snap trend, preseason rows ignored, shares,
   and missing files.
 - `app.py` + `app_page.py` — the in-season web app, the main way the user
@@ -318,8 +323,8 @@ trades (`trades.py`, `trade_finder.py`). Still missing: matchup-aware logic
 data sources only, in this order: snap counts and target data (nflverse) —
 DONE, rest-of-season FantasyPros rankings, defence vs position from
 ESPN box scores, league bid history for FAAB — DONE (`bids.py`), opponent-aware
-start/sit — DONE (`matchup.py` + `consistency.py`), then red-zone touches,
-weather, playoff-week schedules. Sleeper and bust
+start/sit — DONE (`matchup.py` + `consistency.py`), red-zone touches — DONE
+(`redzone.py`), then weather, playoff-week schedules. Sleeper and bust
 signals are built (`signals.py`), but only the ones that come from source
 disagreement — age cliffs and suspensions are still not modelled, because
 neither is in the data the board already pulls.

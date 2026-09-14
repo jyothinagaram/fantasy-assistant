@@ -69,6 +69,32 @@ def test_missing_files_give_nothing_not_an_error():
     assert usage.build(None, None, PLAYERS) == {}
 
 
+PBP = """season_type,game_id,posteam,yardline_100,play_type,rusher_player_id,receiver_player_id
+REG,g1,NE,15,run,00-1,
+REG,g1,NE,3,run,00-1,
+REG,g1,NE,18,pass,,00-2
+REG,g1,NE,40,run,00-1,
+REG,g1,NE,10,pass,,
+PRE,g0,NE,2,run,00-2,
+"""
+
+
+def test_red_zone_counts_and_shares():
+    import redzone
+    table = redzone.build(PBP, PLAYERS)
+    assert table[111] == {"red_zone_opps": 2, "goal_line_opps": 1, "red_zone_share": round(2 / 3, 3)}, table
+    assert table[222]["red_zone_opps"] == 1   # preseason and the 40-yard line ignored
+
+
+def test_upside_red_zone_vote():
+    import upside
+    player = {"name": "RZ", "position": "RB", "team": "NE", "games_played": 0, "targets": 0,
+              "carries": 0, "injury_status": "ACTIVE", "projected_avg": 5, "actual_avg": None,
+              "owned_change": 0, "usage": {"red_zone_share": 0.4, "red_zone_opps": 4}}
+    score, reasons = upside.score_player(player, {}, {}, {})
+    assert score == 0.5 and any("red-zone" in r for r in reasons), (score, reasons)
+
+
 if __name__ == "__main__":
     tests = [v for k, v in dict(globals()).items() if k.startswith("test_")]
     for test in tests:
