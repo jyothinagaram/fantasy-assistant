@@ -300,7 +300,12 @@ The draft tooling is built and tested. Files:
   **Waivers** (under-the-radar first, then claims), **Trades** (ideas + a
   checkbox trade checker), **Guide** (plain-language explanation of every
   feature, data source and ground rule; static, works before data loads —
-  keep it in sync when features change). Phone-first: tabs at the bottom under 760px.
+  keep it in sync when features change). Phone-first: tabs at the bottom under 760px. Lists of cards (weaknesses,
+  strengths, under-the-radar, claims, trade ideas) are "decks": on a phone one
+  swipeable row with the next card peeking in (86% width, scroll-snap); from
+  760px a grid of as many 330px+ columns as fit. Page widens to 1320px for
+  decks; Start/Sit and Guide stay 980px for reading. Jump-to links use
+  `scrollIntoView` so they reach cards inside a sideways row.
   Each league is built by `coach.build` in ONE background worker thread, one
   league at a time (the scoring-rules quirk), saved to `cache/app_<id>.json`
   and served instantly on restart; the page polls and shows data age, and has

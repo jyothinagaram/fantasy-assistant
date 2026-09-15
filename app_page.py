@@ -28,16 +28,18 @@ PAGE_HTML = r"""<!doctype html>
   header { position:sticky; top:0; z-index:20; background:var(--panel);
            border-bottom:1px solid var(--line); padding:10px 16px;
            padding-top:calc(10px + env(safe-area-inset-top)); }
-  .bar { display:flex; gap:10px; align-items:center; max-width:980px; margin:0 auto; }
+  .bar { display:flex; gap:10px; align-items:center; max-width:1320px; margin:0 auto; }
   select, button, input { font:inherit; color:var(--ink); background:var(--panel2);
            border:1px solid var(--line); border-radius:9px; padding:8px 12px; }
   select { flex:1; min-width:0; font-weight:600; }
   button { cursor:pointer; white-space:nowrap; }
   button.primary { background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600; }
   button:disabled { opacity:.5; cursor:default; }
-  .freshness { max-width:980px; margin:4px auto 0; font-size:12px; color:var(--dim); }
+  .freshness { max-width:1320px; margin:4px auto 0; font-size:12px; color:var(--dim); }
   .freshness.busy { color:var(--warn); }
-  main { max-width:980px; margin:0 auto; padding:14px 16px 24px; }
+  main { max-width:1320px; margin:0 auto; padding:14px 16px 24px; }
+  /* Reading-width sections (start/sit, guide) stay narrow even on a wide page. */
+  main.narrow-page { max-width:980px; }
   nav { position:fixed; left:0; right:0; bottom:0; z-index:30; display:flex;
         background:var(--panel); border-top:1px solid var(--line);
         padding-bottom:env(safe-area-inset-bottom); }
@@ -113,6 +115,27 @@ PAGE_HTML = r"""<!doctype html>
   .spinner { width:26px; height:26px; border:3px solid var(--line); border-top-color:var(--accent);
              border-radius:50%; animation:spin 1s linear infinite; margin:0 auto 12px; }
   @keyframes spin { to { transform:rotate(360deg); } }
+
+  /* A deck: several cards on one line.
+     Phone: one row you swipe sideways, the next card peeking in so it is
+     obvious there is more. Tablet and up: a grid, as many per row as fit. */
+  .deck { display:grid; grid-auto-flow:column; grid-auto-columns:86%; gap:10px;
+          overflow-x:auto; scroll-snap-type:x mandatory; overscroll-behavior-x:contain;
+          margin:0 -16px 10px; padding:2px 16px 8px; scroll-padding-inline:16px;
+          -webkit-overflow-scrolling:touch; scrollbar-width:thin; }
+  .deck > .card { margin:0; scroll-snap-align:start; min-width:0; }
+  .deck-head { display:flex; align-items:baseline; justify-content:space-between; gap:10px; }
+  .deck-head h2 { margin-bottom:10px; }
+  .deck-count { font-size:12px; color:var(--dim); white-space:nowrap; }
+  .card { scroll-margin-top:calc(var(--header-h, 58px) + 16px); }
+  @media (min-width:760px) {
+    .deck { grid-auto-flow:row; grid-template-columns:repeat(auto-fill, minmax(330px, 1fr));
+            grid-auto-columns:auto; overflow:visible; margin:0 0 10px; padding:0; align-items:start; }
+    .deck .swipe-hint { display:none; }
+    .card { scroll-margin-top:calc(var(--header-h, 58px) + 66px); }
+  }
+  @media (min-width:760px) { .deck-count .swipe { display:none; } }
+  @media (prefers-reduced-motion: reduce) { .deck { scroll-behavior:auto; } .card.flash { animation:none; } }
   .guide h2 { margin-top:26px; }
   .guide .lede { color:var(--dim); margin:4px 0 0; }
   .guide dl { margin:0; display:grid; gap:12px; }
@@ -152,6 +175,7 @@ const $ = (s) => document.querySelector(s);
 const esc = (t) => String(t ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const signed = (n, d=1) => (n > 0 ? "+" : "") + Number(n).toFixed(d);
 const matchupLine = (p) => p.matchup ? `<div class="small ${p.matchup_quality === "soft" ? "good" : p.matchup_quality === "tough" ? "bad" : "muted"}">${esc(p.matchup)}</div>` : "";
+const deckHead = (title, count, noun) => `<div class="deck-head"><h2>${title}</h2>${count > 1 ? `<span class="deck-count">${count} ${noun}<span class="swipe"> · swipe →</span></span>` : ""}</div>`;
 const ordinal = (n) => { if (n == null) return "?"; const s = ["th","st","nd","rd"], v = n % 100; return n + (s[(v-20)%10] || s[v] || s[0]); };
 
 function remember(key, value) { try { localStorage.setItem(key, value); } catch (e) {} }
@@ -226,8 +250,8 @@ function setTab(tab, target) {
     requestAnimationFrame(() => {
       const el = document.getElementById(target);
       if (!el) return;
-      const offset = document.getElementById("header").offsetHeight + (innerWidth >= 760 ? 50 : 0) + 10;
-      scrollTo({ top: el.getBoundingClientRect().top + scrollY - offset, behavior: "smooth" });
+      const smooth = !matchMedia("(prefers-reduced-motion: reduce)").matches;
+      el.scrollIntoView({ behavior: smooth ? "smooth" : "auto", block: "start", inline: "start" });
       el.classList.remove("flash"); void el.offsetWidth; el.classList.add("flash");
     });
   } else {
@@ -288,8 +312,9 @@ function renderHome(d) {
   }
   html += `</div><div class="muted small" style="margin-top:10px">Points per normal week compared with the league's middle team. Rank out of ${h.positions[0]?.team_count || ""}.</div></div>`;
 
-  html += `<h2>Biggest weaknesses</h2>`;
+  html += deckHead("Biggest weaknesses", h.weaknesses.length, "positions");
   if (!h.weaknesses.length) html += `<div class="card muted">No position is clearly behind the league. 👍</div>`;
+  html += `<div class="deck">`;
   for (const w of h.weaknesses) {
     const p = w.position;
     html += `<div class="card"><div class="section-head"><span class="pill bad">WEAKNESS</span>
@@ -297,9 +322,11 @@ function renderHome(d) {
       <div class="muted small">Starting: ${esc(p.starters.join(", ") || "nobody")}</div>
       ${w.moves.length ? w.moves.map(moveButton).join("") : `<div class="muted small" style="margin-top:8px">No pickup or trade fixes this yet — check back next week.</div>`}</div>`;
   }
+  html += `</div>`;
 
-  html += `<h2>Biggest strengths</h2>`;
+  html += deckHead("Biggest strengths", h.strengths.length, "positions");
   if (!h.strengths.length) html += `<div class="card muted">No position is clearly ahead of the league yet.</div>`;
+  html += `<div class="deck">`;
   for (const st of h.strengths) {
     const p = st.position;
     html += `<div class="card"><div class="section-head"><span class="pill good">STRENGTH</span>
@@ -308,6 +335,7 @@ function renderHome(d) {
       ${st.moves.length ? `<div class="muted small" style="margin-top:8px">Trade from this depth to fix a weakness:</div>` + st.moves.map(moveButton).join("")
         : `<div class="muted small" style="margin-top:8px">No trade selling from here helps both teams yet.</div>`}</div>`;
   }
+  html += `</div>`;
 
   if (d.start_sit && d.start_sit.worth_changing) {
     html += `<h2>This week's lineup</h2>
@@ -389,8 +417,9 @@ function renderWaivers(d) {
     <div class="muted small" style="margin-top:4px">${esc(w.market || "")}</div>
     ${w.big_spenders && w.big_spenders.length ? `<div class="muted small" style="margin-top:4px">Biggest spenders: ${w.big_spenders.map(m => `${esc(m.team)} $${m.spent} (${m.claims})`).join(" · ")}</div>` : ""}`;
 
-  html += `<h2>Under the radar</h2><div class="muted small" style="margin:-4px 0 10px">Running backs, receivers and tight ends whose situation just changed, before their numbers catch up.</div>`;
+  html += deckHead("Under the radar", w.gems.length, "players") + `<div class="muted small" style="margin:-4px 0 10px">Running backs, receivers and tight ends whose situation just changed, before their numbers catch up.</div>`;
   if (!w.gems.length) html += `<div class="card muted">Nobody available has enough evidence behind them this week.</div>`;
+  html += `<div class="deck">`;
   for (const g of w.gems) {
     html += `<div class="card" id="gem-${g.id}"><div class="row">
       <div><b>${esc(g.name)}</b> <span class="muted">${esc(g.position)} · ${esc(g.team)}${g.opponent ? " vs " + esc(g.opponent) : ""}</span></div>
@@ -400,14 +429,17 @@ function renderWaivers(d) {
       ${g.note ? `<div class="quote">“${esc(g.note)}”${g.note_date ? `<div class="small" style="font-style:normal;margin-top:4px">— ${esc(g.note_date)}</div>` : ""}</div>` : ""}
       ${g.claim ? claimBlock(g.claim) : `<div class="muted small" style="margin-top:10px"><span class="pill">STASH</span> doesn't beat your players on today's numbers — a $${w.minimum_bid} bid if you have a spare bench spot.</div>`}</div>`;
   }
+  html += `</div>`;
 
-  html += `<h2>Best claims on today's numbers</h2>`;
+  html += deckHead("Best claims on today's numbers", w.claims.length, "claims");
   if (!w.claims.length) html += `<div class="card muted">No free agent adds at least half a point a week to your lineup.</div>`;
+  html += `<div class="deck">`;
   for (const c of w.claims) {
     html += `<div class="card" id="waiver-${c.add.id}"><div class="row"><div><b>${esc(c.add.name)}</b>
       <span class="muted">${esc(c.add.position)} · ${esc(c.add.team)}</span>${c.add.injury ? ` <span class="pill warn">${esc(c.add.injury)}</span>` : ""}</div></div>
       ${claimBlock(c)}<ul class="reasons">${c.reasons.map(r => `<li>${esc(r)}</li>`).join("")}</ul></div>`;
   }
+  html += `</div>`;
   html += `<div class="muted small">Each claim assumes only that one move. After one goes through, refresh before relying on the next.</div>`;
   return html;
 }
@@ -437,9 +469,11 @@ function tradeCard(t, id) {
 function renderTrades(d) {
   const t = d.trades;
   let html = `<div class="muted small" style="margin-top:4px">Trade deadline: ${esc(t.deadline || "none")} · Veto votes needed: ${esc(t.veto_votes ?? "–")}</div>`;
-  html += `<h2>Trades that help both teams</h2>`;
+  html += deckHead("Trades that help both teams", t.ideas.length, "trades");
   if (!t.ideas.length) html += `<div class="card muted">No trade clearly helps both you and another team right now.</div>`;
+  html += `<div class="deck">`;
   t.ideas.forEach((idea, n) => { html += tradeCard(idea, `trade-${n}`); });
+  html += `</div>`;
 
   const others = t.teams.filter(x => !x.mine), mine = t.teams.find(x => x.mine);
   const partner = Number(recall("partner")) || others[0]?.team_id;
@@ -458,7 +492,9 @@ function wireTrades(d) {
   if (!partnerSelect) return;
   const fill = () => {
     remember("partner", partnerSelect.value);
-    const team = d.trades.teams.find(x => x.team_id === Number(partnerSelect.value));
+    const others = d.trades.teams.filter(x => !x.mine);
+    const team = others.find(x => x.team_id === Number(partnerSelect.value)) || others[0];
+    if (!team) return;
     $("#their-players").innerHTML = team.players.map(p =>
       `<label><input type="checkbox" name="get" value="${p.id}"><span class="who"><b>${esc(p.name)}</b> <span class="muted small">${esc(p.position)} · ${p.normal_week?.toFixed(1) ?? "–"}</span></span></label>`).join("");
     $("#check-result").innerHTML = "";
@@ -543,7 +579,7 @@ function renderGuide() {
 
 function render() {
   const main = $("#main");
-  if (state.tab === "guide") { main.innerHTML = renderGuide(); return; }
+  if (state.tab === "guide") { main.innerHTML = renderGuide(); main.classList.add("narrow-page"); return; }
   if (!state.data) {
     main.innerHTML = `<div class="loading"><div class="spinner"></div>Working out this league for the first time.<br>This takes a minute or two.</div>`;
     return;
@@ -551,6 +587,7 @@ function render() {
   const d = state.data;
   const views = { home: renderHome, lineup: renderLineup, waivers: renderWaivers, trades: renderTrades };
   main.innerHTML = views[state.tab](d);
+  main.classList.toggle("narrow-page", state.tab === "lineup");
   if (state.tab === "trades") wireTrades(d);
 }
 
