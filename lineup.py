@@ -138,13 +138,20 @@ def weekly_projection(player, week):
         return 0.0
 
 
-def roster(league, team_id, week, rosters=None):
+def roster(league, team_id, week, rosters=None, byes=None):
     """
     Your roster as plain dictionaries, in the same shape the rest of this
     project already uses, so the existing commentary and signal code can
     read them without translation.
     """
     rosters = rosters or rosters_for_week(league, week)
+    if byes is None:
+        # ESPN's real bye table. Never guess a bye from a zero projection:
+        # ESPN also projects zero for a player it expects to miss the game
+        # (Kyler Murray in the concussion protocol, week 2), and calling
+        # that a bye hides the real reason he is out.
+        import waivers
+        byes = waivers.bye_weeks(league)
     if team_id not in rosters:
         raise LookupError(f"no team {team_id} in {league.settings.name}")
     players = []
@@ -161,7 +168,7 @@ def roster(league, team_id, week, rosters=None):
                 "current_slot": slot,
                 "currently_starting": slot not in BENCH_SLOTS and slot != "",
                 "percent_owned": round(getattr(player, "percent_owned", 0.0) or 0.0, 1),
-                "bye_week": rankings.find_bye_week(player),
+                "bye_week": byes.get(player.proTeam) if byes else rankings.find_bye_week(player),
             }
         )
     return players

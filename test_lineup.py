@@ -179,7 +179,23 @@ def test_scoring_respects_bye_and_injury():
     print("  ok  bye weeks and injuries zero out, projections average")
 
 
+def test_zero_projection_is_not_a_bye():
+    """ESPN projects 0 for a player expected to miss the game; that is not his bye."""
+    import types
+    player = types.SimpleNamespace(
+        playerId=1, name="Hurt QB", position="QB", proTeam="MIN", lineupSlot="QB",
+        injuryStatus="QUESTIONABLE", percent_owned=90.0,
+        stats={2: {"projected_points": 0.0}, 1: {"projected_points": 16.4}, 0: {"projected_points": 290.0}},
+    )
+    rows = lineup.roster(None, 10, 2, rosters={10: [player]}, byes={"MIN": 6})
+    assert rows[0]["bye_week"] == 6, rows[0]["bye_week"]
+    scored = lineup.score(rows, 2)[0]
+    assert not scored["on_bye"]
+    print("  ok  test_zero_projection_is_not_a_bye")
+
+
 if __name__ == "__main__":
+    test_zero_projection_is_not_a_bye()
     print("\nChecking the lineup solver:\n")
     test_flex_should_take_the_deeper_position()
     test_two_flex_spots()

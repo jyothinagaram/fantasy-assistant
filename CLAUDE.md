@@ -365,6 +365,13 @@ Rough build order: (1) draft tooling — done, blended with FantasyPros,
 (2) start/sit — done, (3) waiver and pickup/drop recommendations — done (bids still heuristic),
 (4) trades — done; matchup-aware still to do, (5) UI and more data sources.
 
+**Never guess a bye from a zero projection (fixed 2026-09-14).** ESPN
+projects 0 for a player it expects to miss a game — Kyler Murray in the
+concussion protocol showed as "BYE" in week 2 because
+`rankings.find_bye_week` treats any zero week as the bye. In-season code
+must use `waivers.bye_weeks(league)` (ESPN's real per-team bye table);
+`lineup.roster` now does. `find_bye_week` is only a draft-time fallback.
+
 **Next-week projections bug (fixed 2026-09-14).** `league.teams[...].roster`
 only carries projections for `league.current_week`. Planning for the next
 week from it gave every ROSTERED player 0 while free agents (fetched per
