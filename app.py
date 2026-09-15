@@ -171,6 +171,7 @@ def trade_view(result):
     give_points, get_points = trades.on_paper(result)
     return {
         "partner": result["partner"].team_name if hasattr(result["partner"], "team_name") else result["partner"],
+        "partner_id": result["partner"].team_id if hasattr(result["partner"], "team_id") else result.get("partner_id"),
         "give": [player_view(p) for p in result["give"]],
         "get": [player_view(p) for p in result["get"]],
         "my_gain_per_week": result["my_gain_per_week"],
@@ -237,19 +238,30 @@ def home_view(report):
 
 
 def roster_for_checker(board):
-    """Every team's players, light enough to fill the trade checker's lists."""
-    return [
-        {
+    """
+    Every team's roster -- for the trade checker's lists and for the roster
+    page you reach by tapping a team's name on a trade.
+    """
+    def row(p):
+        view = player_view(p)
+        slot = p.get("current_slot") or ""
+        view["slot"] = slot
+        view["starting"] = slot not in lineup.BENCH_SLOTS and slot != ""
+        view["on_ir"] = slot == "IR"
+        return view
+
+    teams = []
+    for team_id, entry in board["rosters"].items():
+        team = entry["team"]
+        teams.append({
             "team_id": team_id,
-            "name": entry["team"].team_name,
+            "name": team.team_name,
             "mine": team_id == board["team_id"],
-            "players": sorted(
-                [player_view(p) for p in entry["players"]],
-                key=lambda p: -(p["normal_week"] or 0),
-            ),
-        }
-        for team_id, entry in board["rosters"].items()
-    ]
+            "record": f"{team.wins}-{team.losses}" + (f"-{team.ties}" if getattr(team, "ties", 0) else ""),
+            "standing": getattr(team, "standing", None),
+            "players": sorted([row(p) for p in entry["players"]], key=lambda p: -(p["normal_week"] or 0)),
+        })
+    return teams
 
 
 def private_board(board):
@@ -414,6 +426,7 @@ class AppState:
             board["weeks"], board["first_week"],
         )
         result["partner"] = teams[partner_id]["name"]
+        result["partner_id"] = int(partner_id)
         return trade_view(result)
 
 

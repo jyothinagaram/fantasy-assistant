@@ -135,6 +135,13 @@ PAGE_HTML = r"""<!doctype html>
     .card { scroll-margin-top:calc(var(--header-h, 58px) + 66px); }
   }
   @media (min-width:760px) { .deck-count .swipe { display:none; } }
+  .team-link { background:none; border:0; padding:0; font:inherit; font-weight:700; color:var(--accent);
+               cursor:pointer; text-decoration:underline; text-underline-offset:3px; }
+  .team-link:focus-visible, .back:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+  .back { background:none; border:0; padding:6px 0; color:var(--accent); font-weight:600; }
+  .roster-head { display:flex; flex-wrap:wrap; gap:10px; align-items:center; justify-content:space-between; }
+  .roster-head .name { font-size:22px; font-weight:700; }
+  .pos-tag { display:inline-block; min-width:38px; font-size:11px; font-weight:700; color:var(--dim); }
   @media (prefers-reduced-motion: reduce) { .deck { scroll-behavior:auto; } .card.flash { animation:none; } }
   .guide h2 { margin-top:26px; }
   .guide .lede { color:var(--dim); margin:4px 0 0; }
@@ -170,7 +177,7 @@ PAGE_HTML = r"""<!doctype html>
 <main id="main"><div class="loading"><div class="spinner"></div>Loading…</div></main>
 
 <script>
-const state = { leagues: [], leagueId: null, data: null, tab: "home", poll: null };
+const state = { leagues: [], leagueId: null, data: null, tab: "home", poll: null, rosterTeam: null };
 const $ = (s) => document.querySelector(s);
 const esc = (t) => String(t ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const signed = (n, d=1) => (n > 0 ? "+" : "") + Number(n).toFixed(d);
@@ -242,6 +249,7 @@ async function tick() {
 // ---------------------------------------------------------------- tabs & links
 
 function setTab(tab, target) {
+  if (tab !== "trades" || state.tab !== "trades") state.rosterTeam = null;
   state.tab = tab;
   remember("tab", tab);
   document.querySelectorAll("nav button").forEach(b => b.classList.toggle("on", b.dataset.tab === tab));
@@ -455,7 +463,10 @@ function tradeCard(t, id) {
   let lopsided = "";
   if (t.paper_get > 1.25 * t.paper_give) lopsided = `On paper you get ${t.paper_get} pts/wk of players for ${t.paper_give} — they may see it as lopsided, so explain why it helps them.`;
   else if (t.paper_give > 1.25 * t.paper_get) lopsided = `On paper you give ${t.paper_give} pts/wk of players for ${t.paper_get} — an easy yes for them; make sure it's worth it.`;
-  return `<div class="card" ${id ? `id="${id}"` : ""}><div class="muted small">with <b style="color:var(--ink)">${esc(t.partner)}</b></div>
+  const partner = t.partner_id != null
+    ? `<button class="team-link" onclick="openRoster(${Number(t.partner_id)})" title="See ${esc(t.partner)}'s roster">${esc(t.partner)} ›</button>`
+    : `<b style="color:var(--ink)">${esc(t.partner)}</b>`;
+  return `<div class="card" ${id ? `id="${id}"` : ""}><div class="muted small">with ${partner}</div>
     <div class="swap" style="margin-top:8px"><div><span class="pill bad">GIVE</span>${names(t.give)}</div><div class="arrow">⇄</div><div><span class="pill good">GET</span>${names(t.get)}</div></div>
     <div class="row" style="margin-top:10px">
       <div><div class="muted small">You</div><div class="big ${verdict(t.my_gain_per_week)}">${signed(t.my_gain_per_week)}</div></div>
@@ -466,8 +477,67 @@ function tradeCard(t, id) {
     ${lopsided ? `<div class="warn small" style="margin-top:8px">${esc(lopsided)}</div>` : ""}</div>`;
 }
 
+function openRoster(teamId) {
+  state.rosterTeam = teamId;
+  render();
+  scrollTo({ top: 0 });
+}
+
+function closeRoster(target) {
+  state.rosterTeam = null;
+  setTab("trades", target);
+}
+
+function tradeWith(teamId) {
+  remember("partner", teamId);
+  closeRoster("checker");
+}
+
+const POSITION_ORDER = ["QB", "RB", "WR", "TE", "K", "D/ST"];
+
+function renderRoster(d, team) {
+  const inIdeas = new Map();
+  d.trades.ideas.forEach((idea, n) => {
+    if (idea.partner_id !== team.team_id) return;
+    idea.get.forEach(p => inIdeas.set(p.id, n));
+  });
+  const byPosition = (list) => [...list].sort((a, b) =>
+    (POSITION_ORDER.indexOf(a.position) - POSITION_ORDER.indexOf(b.position)) || ((b.normal_week || 0) - (a.normal_week || 0)));
+
+  const row = (p) => {
+    const idea = inIdeas.get(p.id);
+    const flag = p.injury ? ` <span class="pill ${/out|reserve|suspension|doubtful/i.test(p.injury) ? "bad" : "warn"}">${esc(p.injury)}</span>` : "";
+    return `<div class="player"><div class="who">
+        <div class="name"><span class="pos-tag">${esc(p.position)}</span>${esc(p.name)}${flag}</div>
+        <div class="muted small">${esc(p.team || "")}${p.ros_rank ? " · experts " + esc(p.ros_rank) : ""}${p.usage ? " · " + esc(p.usage) : ""}</div>
+        ${p.playoffs ? `<div class="small ${p.playoff_bye ? "bad" : "muted"}">${esc(p.playoffs)}</div>` : ""}
+        ${idea !== undefined ? `<button class="team-link small" onclick="closeRoster('trade-${idea}')">In a trade idea ›</button>` : ""}
+      </div><div class="pts">${p.normal_week?.toFixed(1) ?? "–"}<div class="muted small" style="font-weight:400">pts/wk</div></div></div>`;
+  };
+  const starters = byPosition(team.players.filter(p => p.starting));
+  const bench = byPosition(team.players.filter(p => !p.starting && !p.on_ir));
+  const ir = byPosition(team.players.filter(p => p.on_ir));
+
+  return `<div class="narrow-inner" style="max-width:980px">
+    <button class="back" onclick="closeRoster()">‹ Back to trades</button>
+    <div class="card"><div class="roster-head">
+      <div><div class="name">${esc(team.name)}</div>
+      <div class="muted small">${esc(team.record || "")}${team.standing ? ` · ${ordinal(team.standing)} place` : ""} · ${team.players.length} players</div></div>
+      <button class="primary" onclick="tradeWith(${Number(team.team_id)})">Build a trade with them</button></div></div>
+    <h2>Starting lineup</h2><div class="card">${starters.length ? starters.map(row).join("") : `<div class="muted">No starters set.</div>`}</div>
+    <h2>Bench</h2><div class="card">${bench.length ? bench.map(row).join("") : `<div class="muted">Empty bench.</div>`}</div>
+    ${ir.length ? `<h2>Injured reserve</h2><div class="card">${ir.map(row).join("")}</div>` : ""}
+    <div class="muted small">Points per week are what each player scores for their team in a normal week. Lineup is how they have it set on ESPN right now.</div>
+  </div>`;
+}
+
 function renderTrades(d) {
   const t = d.trades;
+  if (state.rosterTeam != null) {
+    const team = t.teams.find(x => x.team_id === state.rosterTeam);
+    if (team) return renderRoster(d, team);
+    state.rosterTeam = null;
+  }
   let html = `<div class="muted small" style="margin-top:4px">Trade deadline: ${esc(t.deadline || "none")} · Veto votes needed: ${esc(t.veto_votes ?? "–")}</div>`;
   html += deckHead("Trades that help both teams", t.ideas.length, "trades");
   if (!t.ideas.length) html += `<div class="card muted">No trade clearly helps both you and another team right now.</div>`;
@@ -477,7 +547,7 @@ function renderTrades(d) {
 
   const others = t.teams.filter(x => !x.mine), mine = t.teams.find(x => x.mine);
   const partner = Number(recall("partner")) || others[0]?.team_id;
-  html += `<h2>Check a trade</h2><div class="card checker">
+  html += `<h2>Check a trade</h2><div class="card checker" id="checker">
     <select id="partner" style="width:100%;margin-bottom:12px">${others.map(x => `<option value="${x.team_id}" ${x.team_id === partner ? "selected" : ""}>${esc(x.name)}</option>`).join("")}</select>
     <div class="columns"><div><div class="muted small" style="margin-bottom:4px">You give</div>
       ${mine.players.map(p => `<label><input type="checkbox" name="give" value="${p.id}"><span class="who"><b>${esc(p.name)}</b> <span class="muted small">${esc(p.position)} · ${p.normal_week?.toFixed(1) ?? "–"}</span></span></label>`).join("")}</div>
@@ -488,6 +558,7 @@ function renderTrades(d) {
 }
 
 function wireTrades(d) {
+  if (state.rosterTeam != null) return;
   const partnerSelect = $("#partner");
   if (!partnerSelect) return;
   const fill = () => {
@@ -542,6 +613,7 @@ function renderGuide() {
     ${section("Trades", "Trades that help both sides — the ones that get accepted", [
       ["Trade ideas", "One-for-one and two-for-one trades with every team that improve both lineups."],
       ["Trade checker", "Tick players on each side to see points per week gained or lost, for you and for them."],
+      ["Their roster", "Tap the other team's name on any trade to see their whole roster, and start a trade with them from there."],
       ["Looks lopsided?", "A warning when a fair trade will look unfair by name, so you know to explain why it helps them."],
       ["Playoff schedule", "Each player's opponents in weeks 15–17, with a warning for a bye during your playoffs."],
     ])}
@@ -591,8 +663,8 @@ function render() {
   if (state.tab === "trades") wireTrades(d);
 }
 
-document.querySelectorAll("nav button").forEach(b => b.onclick = () => setTab(b.dataset.tab));
-$("#league").onchange = () => { state.leagueId = Number($("#league").value); remember("league", state.leagueId); state.data = null; showFreshness(); render(); loadLeague(); };
+document.querySelectorAll("nav button").forEach(b => b.onclick = () => { state.rosterTeam = null; setTab(b.dataset.tab); });
+$("#league").onchange = () => { state.rosterTeam = null; state.leagueId = Number($("#league").value); remember("league", state.leagueId); state.data = null; showFreshness(); render(); loadLeague(); };
 $("#refresh").onclick = async () => { state.leagues = await api("/api/refresh", { league_id: state.leagueId }); showFreshness(); };
 
 (async () => {

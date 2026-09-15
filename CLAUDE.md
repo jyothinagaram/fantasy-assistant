@@ -305,7 +305,11 @@ The draft tooling is built and tested. Files:
   swipeable row with the next card peeking in (86% width, scroll-snap); from
   760px a grid of as many 330px+ columns as fit. Page widens to 1320px for
   decks; Start/Sit and Guide stay 980px for reading. Jump-to links use
-  `scrollIntoView` so they reach cards inside a sideways row.
+  `scrollIntoView` so they reach cards inside a sideways row. On a trade card
+  the other team's name opens their ROSTER (inside the Trades tab, state
+  `rosterTeam`): record/standing, starters/bench/IR as set on ESPN grouped by
+  position with normal-week points, usage, playoff schedule, "In a trade
+  idea" links, and "Build a trade with them" which preselects the checker.
   Each league is built by `coach.build` in ONE background worker thread, one
   league at a time (the scoring-rules quirk), saved to `cache/app_<id>.json`
   and served instantly on restart; the page polls and shows data age, and has
