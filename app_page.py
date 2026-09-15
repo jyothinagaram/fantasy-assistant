@@ -142,6 +142,26 @@ PAGE_HTML = r"""<!doctype html>
   .roster-head { display:flex; flex-wrap:wrap; gap:10px; align-items:center; justify-content:space-between; }
   .roster-head .name { font-size:22px; font-weight:700; }
   .pos-tag { display:inline-block; min-width:38px; font-size:11px; font-weight:700; color:var(--dim); }
+  .score { display:grid; grid-template-columns:1fr auto 1fr; gap:10px; align-items:center; }
+  .score .side { min-width:0; }
+  .score .side.them { text-align:right; }
+  .score .team { font-weight:600; font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .score .pts { font-size:34px; font-weight:750; letter-spacing:-.02em; font-variant-numeric:tabular-nums; line-height:1.1; }
+  .score .vs { color:var(--dim); font-size:12px; font-weight:700; }
+  .score .sub { font-size:12px; color:var(--dim); font-variant-numeric:tabular-nums; }
+  .live-dot { display:inline-block; width:7px; height:7px; border-radius:50%; background:var(--bad); margin-right:5px; vertical-align:middle; }
+  details.box { margin-top:12px; }
+  details.box summary { cursor:pointer; color:var(--accent); font-weight:600; font-size:14px; list-style:none; }
+  details.box summary::-webkit-details-marker { display:none; }
+  .box-grid { display:grid; gap:12px; margin-top:10px; }
+  @media (min-width:760px) { .box-grid { grid-template-columns:1fr 1fr; } }
+  .box-row { display:grid; grid-template-columns:58px 1fr auto; gap:8px; align-items:center; padding:6px 0;
+             border-top:1px solid var(--line); font-size:14px; }
+  .box-row .slot { color:var(--dim); font-size:12px; font-weight:600; }
+  .box-row .nm { min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .box-row .p { font-weight:700; font-variant-numeric:tabular-nums; text-align:right; }
+  .box-row .p small { display:block; font-weight:400; color:var(--dim); font-size:11px; }
+  .state-live { color:var(--bad); } .state-upcoming { color:var(--dim); } .state-final { color:var(--dim); }
   @media (prefers-reduced-motion: reduce) { .deck { scroll-behavior:auto; } .card.flash { animation:none; } }
   .guide h2 { margin-top:26px; }
   .guide .lede { color:var(--dim); margin:4px 0 0; }
@@ -177,7 +197,7 @@ PAGE_HTML = r"""<!doctype html>
 <main id="main"><div class="loading"><div class="spinner"></div>Loading…</div></main>
 
 <script>
-const state = { leagues: [], leagueId: null, data: null, tab: "home", poll: null, rosterTeam: null };
+const state = { leagues: [], leagueId: null, data: null, tab: "home", poll: null, rosterTeam: null, scoreboard: null, scoreboardFor: null, scoreboardAt: 0 };
 const $ = (s) => document.querySelector(s);
 const esc = (t) => String(t ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const signed = (n, d=1) => (n > 0 ? "+" : "") + Number(n).toFixed(d);
@@ -233,6 +253,7 @@ function showFreshness() {
 }
 
 async function loadLeague() {
+  loadScoreboard(true);
   const data = await api(`/api/league/${state.leagueId}`);
   state.data = data.loading ? null : data;
   render();
@@ -244,12 +265,13 @@ async function tick() {
   const after = state.leagues.find(x => x.league_id === state.leagueId)?.updated;
   showFreshness();
   if (after !== before || !state.data) loadLeague();
+  else if (state.tab === "home") loadScoreboard(false);
 }
 
 // ---------------------------------------------------------------- tabs & links
 
 function setTab(tab, target) {
-  if (tab !== "trades" || state.tab !== "trades") state.rosterTeam = null;
+  if (tab !== state.tab) state.rosterTeam = null;
   state.tab = tab;
   remember("tab", tab);
   document.querySelectorAll("nav button").forEach(b => b.classList.toggle("on", b.dataset.tab === tab));
@@ -281,7 +303,11 @@ function moveButton(move) {
 
 function renderHome(d) {
   const h = d.home, s = h.season, latest = s.weeks[s.weeks.length - 1];
-  let html = `<h2>How you're doing</h2><div class="stats">`;
+  const myTeam = (d.trades.teams || []).find(x => x.mine);
+  let html = renderScoreboard();
+  if (myTeam) html += `<button class="move" onclick="openRoster(${Number(myTeam.team_id)})"><span class="go">Roster ›</span>
+    <div class="title">My roster</div><div class="detail">${esc(myTeam.name)} · ${myTeam.players.length} players · starters, bench and IR</div></button>`;
+  html += `<h2>How you're doing</h2><div class="stats">`;
   if (d.start_sit && d.start_sit.matchup) {
     const m = d.start_sit.matchup, cls = m.situation === "favourite" ? "good" : m.situation === "underdog" ? "bad" : "warn";
     html += `<div class="stat" onclick="setTab('lineup')" style="cursor:pointer"><div class="label">Week ${d.start_sit.week} vs ${esc(m.opponent)}</div>
@@ -485,12 +511,13 @@ function openRoster(teamId) {
 
 function closeRoster(target) {
   state.rosterTeam = null;
-  setTab("trades", target);
+  setTab(state.tab, target);
 }
 
 function tradeWith(teamId) {
   remember("partner", teamId);
-  closeRoster("checker");
+  state.rosterTeam = null;
+  setTab("trades", "checker");
 }
 
 const POSITION_ORDER = ["QB", "RB", "WR", "TE", "K", "D/ST"];
@@ -519,11 +546,11 @@ function renderRoster(d, team) {
   const ir = byPosition(team.players.filter(p => p.on_ir));
 
   return `<div class="narrow-inner" style="max-width:980px">
-    <button class="back" onclick="closeRoster()">‹ Back to trades</button>
+    <button class="back" onclick="closeRoster()">‹ Back</button>
     <div class="card"><div class="roster-head">
       <div><div class="name">${esc(team.name)}</div>
       <div class="muted small">${esc(team.record || "")}${team.standing ? ` · ${ordinal(team.standing)} place` : ""} · ${team.players.length} players</div></div>
-      <button class="primary" onclick="tradeWith(${Number(team.team_id)})">Build a trade with them</button></div></div>
+      ${team.mine ? `<span class="pill accent">YOUR TEAM</span>` : `<button class="primary" onclick="tradeWith(${Number(team.team_id)})">Build a trade with them</button>`}</div></div>
     <h2>Starting lineup</h2><div class="card">${starters.length ? starters.map(row).join("") : `<div class="muted">No starters set.</div>`}</div>
     <h2>Bench</h2><div class="card">${bench.length ? bench.map(row).join("") : `<div class="muted">Empty bench.</div>`}</div>
     ${ir.length ? `<h2>Injured reserve</h2><div class="card">${ir.map(row).join("")}</div>` : ""}
@@ -533,11 +560,7 @@ function renderRoster(d, team) {
 
 function renderTrades(d) {
   const t = d.trades;
-  if (state.rosterTeam != null) {
-    const team = t.teams.find(x => x.team_id === state.rosterTeam);
-    if (team) return renderRoster(d, team);
-    state.rosterTeam = null;
-  }
+
   let html = `<div class="muted small" style="margin-top:4px">Trade deadline: ${esc(t.deadline || "none")} · Veto votes needed: ${esc(t.veto_votes ?? "–")}</div>`;
   html += deckHead("Trades that help both teams", t.ideas.length, "trades");
   if (!t.ideas.length) html += `<div class="card muted">No trade clearly helps both you and another team right now.</div>`;
@@ -584,6 +607,58 @@ function wireTrades(d) {
 }
 
 
+
+// ---------------------------------------------------------------- scoreboard
+
+async function loadScoreboard(force) {
+  if (!state.leagueId) return;
+  const fresh = state.scoreboardFor === state.leagueId && Date.now() - state.scoreboardAt < 55000;
+  if (fresh && !force) return;
+  try {
+    const board = await api(`/api/scoreboard/${state.leagueId}`);
+    state.scoreboard = board; state.scoreboardFor = state.leagueId; state.scoreboardAt = Date.now();
+    if (state.tab === "home" && state.rosterTeam == null) {
+      const slot = document.getElementById("scoreboard");
+      if (slot) slot.outerHTML = renderScoreboard();
+    }
+  } catch (e) { /* the rest of the page does not depend on it */ }
+}
+
+function boxRows(side) {
+  const label = { final: "final", live: "playing", upcoming: "to play", bye: "bye" };
+  const row = (r) => `<div class="box-row"><span class="slot">${esc(r.starting ? r.slot : "BE")}</span>
+    <span class="nm">${esc(r.name)}<span class="small state-${r.state}"> · ${r.state === "live" ? '<span class="live-dot"></span>' : ""}${label[r.state]}${r.opponent ? " vs " + esc(r.opponent) : ""}</span></span>
+    <span class="p">${r.points.toFixed(1)}<small>proj ${r.projected.toFixed(1)}</small></span></div>`;
+  const starters = side.players.filter(r => r.starting), bench = side.players.filter(r => !r.starting);
+  return `<div><div style="font-weight:700;margin-bottom:4px">${esc(side.team)}</div>${starters.map(row).join("")}
+    ${bench.length ? `<div class="muted small" style="margin-top:8px">Bench</div>${bench.map(row).join("")}` : ""}</div>`;
+}
+
+function renderScoreboard() {
+  const b = state.scoreboardFor === state.leagueId ? state.scoreboard : null;
+  if (!b || b.loading) return `<div id="scoreboard"><h2>This week's matchup</h2><div class="card muted">Loading the scoreboard…</div></div>`;
+  if (b.error) return `<div id="scoreboard"><h2>This week's matchup</h2><div class="card muted">${esc(b.error)}</div></div>`;
+  if (b.bye) return `<div id="scoreboard"><h2>Week ${b.week}</h2><div class="card muted">No matchup this week.</div></div>`;
+  const me = b.me, them = b.them;
+  const ahead = me.score > them.score ? "good" : me.score < them.score ? "bad" : "";
+  const liveNow = me.playing + them.playing > 0;
+  const status = b.finished ? "Final" : liveNow ? `<span class="live-dot"></span>Live` : "Not started";
+  const stillToPlay = (v) => v.yet_to_play + v.playing ? `${v.yet_to_play + v.playing} left to play · ` : "";
+  return `<div id="scoreboard"><div class="deck-head"><h2>Week ${b.week} scoreboard</h2><span class="deck-count">${status} · updated ${esc(b.checked_at)}</span></div>
+    <div class="card">
+      <div class="score">
+        <div class="side"><div class="team">${esc(me.team)} <span class="muted small">(you)</span></div>
+          <div class="pts ${ahead}">${me.score.toFixed(1)}</div>
+          <div class="sub">${stillToPlay(me)}${b.finished ? "" : "on pace " + me.live_projection.toFixed(1)}</div></div>
+        <div class="vs">VS</div>
+        <div class="side them"><div class="team">${them.team_id != null ? `<button class="team-link" onclick="openRoster(${Number(them.team_id)})">${esc(them.team)}</button>` : esc(them.team)}</div>
+          <div class="pts">${them.score.toFixed(1)}</div>
+          <div class="sub">${stillToPlay(them)}${b.finished ? "" : "on pace " + them.live_projection.toFixed(1)}</div></div>
+      </div>
+      <details class="box"><summary>Player-by-player ›</summary><div class="box-grid">${boxRows(me)}${boxRows(them)}</div></details>
+    </div></div>`;
+}
+
 // ---------------------------------------------------------------- guide
 
 function renderGuide() {
@@ -594,6 +669,8 @@ function renderGuide() {
     <div class="card"><div>This reads your three ESPN leagues and recommends moves. It can't change anything on ESPN — you always make the move in the ESPN app.</div>
       <div class="muted small" style="margin-top:8px">Open it on this network at <code>${esc(location.host)}</code>. Your Mac must be on and awake.</div></div>
     ${section("Team", "Where you stand, and what to fix first", [
+      ["Live scoreboard", "This week's score against your opponent, who's still to play, where each team is on pace to finish, and a player-by-player view. Refreshes every minute."],
+      ["My roster", "Your whole roster — starters, bench and injured reserve. Tap your opponent's name on the scoreboard to see theirs."],
       ["How you're doing", "Last week's score and how it ranked in the league, your record, standing, and ESPN's playoff odds."],
       ["This week's win chance", "Your projected score against your opponent's, and whether you're the favorite, underdog or it's a toss-up."],
       ["Strengths &amp; weaknesses", "A bar for each position showing if your starters are better or worse than the league's typical team."],
@@ -658,6 +735,9 @@ function render() {
   }
   const d = state.data;
   const views = { home: renderHome, lineup: renderLineup, waivers: renderWaivers, trades: renderTrades };
+  const rosterTeam = state.rosterTeam != null && d.trades.teams.find(x => x.team_id === state.rosterTeam);
+  if (rosterTeam) { main.innerHTML = renderRoster(d, rosterTeam); main.classList.add("narrow-page"); return; }
+  state.rosterTeam = null;
   main.innerHTML = views[state.tab](d);
   main.classList.toggle("narrow-page", state.tab === "lineup");
   if (state.tab === "trades") wireTrades(d);

@@ -309,7 +309,16 @@ The draft tooling is built and tested. Files:
   the other team's name opens their ROSTER (inside the Trades tab, state
   `rosterTeam`): record/standing, starters/bench/IR as set on ESPN grouped by
   position with normal-week points, usage, playoff schedule, "In a trade
-  idea" links, and "Build a trade with them" which preselects the checker.
+  idea" links, and "Build a trade with them" which preselects the checker. The roster view
+  works from any tab (Team tab has "My roster").
+  **Live scoreboard** at the top of Team: `/api/scoreboard/<league>` →
+  `app.build_scoreboard` from `league.box_scores(current_week)`, cached 60s,
+  polled every minute while on Team. It REUSES the worker's league
+  connection (`AppState.connections`) — never opens a new one, because
+  connecting resets espn_api's shared scoring settings mid-build. Game state
+  per player from kickoff time (upcoming / live for 3.5h / final); "on pace"
+  = points so far + projection for players yet to play (half for games in
+  progress).
   Each league is built by `coach.build` in ONE background worker thread, one
   league at a time (the scoring-rules quirk), saved to `cache/app_<id>.json`
   and served instantly on restart; the page polls and shows data age, and has

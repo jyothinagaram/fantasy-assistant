@@ -21,6 +21,7 @@ On a home network that is fine; on a coffee-shop network, run it with
 APP_LOCAL_ONLY=1 to keep it to this computer.
 """
 
+import datetime as dt
 import json
 import os
 import socket
@@ -53,6 +54,13 @@ CACHE_DIR = "cache"
 # How many rows of each list travel to the page. Phones do not need 150
 # free agents; they need the ones worth acting on.
 CLAIMS_SHOWN = 15
+
+# The live scoreboard is re-read from ESPN at most this often, however many
+# phones are watching it.
+SCOREBOARD_SECONDS = 60
+
+# How long after kickoff a game is treated as still being played.
+GAME_HOURS = 3.5
 GEMS_SHOWN = 10
 
 
@@ -318,6 +326,8 @@ class AppState:
         self.queue = []
         self.leagues = [L for L in leagues.available_leagues(creds) if L.get("team_id")]
         self.data = {}      # league_id -> {"payload", "private", "updated"}
+        self.connections = {}   # league_id -> (ESPN league object, my team id)
+        self.scoreboards = {}   # league_id -> (fetched at, scoreboard)
         self.status = {}    # league_id -> text shown while working
         for entry in self.leagues:
             saved = self.load(entry["league_id"])
@@ -363,6 +373,11 @@ class AppState:
             try:
                 self.status[league_id] = "reading ESPN"
                 league = leagues.connect(league_id, self.creds)
+                # Kept for the live scoreboard, which reuses this connection
+                # rather than opening a new one mid-build: connecting to a
+                # league resets the ESPN library's shared scoring settings
+                # (see CLAUDE.md), which would corrupt a build in progress.
+                self.connections[league_id] = (league, entry["team_id"])
                 report = coach.build(
                     league, entry["team_id"], self.creds["season"],
                     progress=lambda step: self.status.__setitem__(league_id, f"working: {step}"),
@@ -401,6 +416,22 @@ class AppState:
             entry = self.data.get(league_id)
             return entry["payload"] if entry else None
 
+    def scoreboard(self, league_id):
+        """This week's head-to-head as it stands right now, cached briefly."""
+        cached = self.scoreboards.get(league_id)
+        if cached and time.time() - cached[0] < SCOREBOARD_SECONDS:
+            return cached[1]
+        connection = self.connections.get(league_id)
+        if not connection:
+            return {"loading": True}
+        league, team_id = connection
+        try:
+            board = build_scoreboard(league, team_id)
+        except Exception as error:
+            board = {"error": f"Could not read the scoreboard from ESPN: {error}"}
+        self.scoreboards[league_id] = (time.time(), board)
+        return board
+
     def check_trade(self, league_id, give_ids, get_ids):
         with self.lock:
             entry = self.data.get(league_id)
@@ -431,6 +462,102 @@ class AppState:
 
 
 # ---------------------------------------------------------------------------
+# The live scoreboard
+# ---------------------------------------------------------------------------
+
+def game_state(player, now=None):
+    """'final', 'live' or 'upcoming' for one player's NFL game, or 'bye'."""
+    if getattr(player, "on_bye_week", False):
+        return "bye"
+    kickoff = getattr(player, "game_date", None)
+    if kickoff is None:
+        return "bye"
+    now = now or dt.datetime.now()
+    if now < kickoff:
+        return "upcoming"
+    if now < kickoff + dt.timedelta(hours=GAME_HOURS):
+        return "live"
+    return "final"
+
+
+def live_projection(lineup_rows):
+    """
+    Points already scored, plus the projection for players yet to play.
+    A player whose game is under way keeps what he has plus the unplayed
+    share of his projection -- a rough but honest middle.
+    """
+    total = 0.0
+    for row in lineup_rows:
+        if not row["starting"]:
+            continue
+        if row["state"] in ("final", "bye"):
+            total += row["points"]
+        elif row["state"] == "upcoming":
+            total += row["projected"]
+        else:
+            total += max(row["points"], row["projected"] * 0.5 + row["points"] * 0.5)
+    return round(total, 1)
+
+
+def build_scoreboard(league, team_id):
+    week = league.current_week
+    for box in league.box_scores(week):
+        sides = []
+        for side in ("home", "away"):
+            team = getattr(box, f"{side}_team", None)
+            sides.append((side, team if team and not isinstance(team, int) else None))
+        ids = [team.team_id for _, team in sides if team]
+        if team_id not in ids:
+            continue
+
+        now = dt.datetime.now()
+
+        def side_view(side, team):
+            rows = []
+            for player in getattr(box, f"{side}_lineup") or []:
+                slot = player.slot_position or ""
+                rows.append({
+                    "name": player.name,
+                    "position": player.position,
+                    "slot": slot,
+                    "starting": slot not in lineup.BENCH_SLOTS and slot != "",
+                    "points": round(player.points or 0.0, 1),
+                    "projected": round(player.projected_points or 0.0, 1),
+                    "state": game_state(player, now),
+                    "opponent": None if player.pro_opponent in (None, "None") else player.pro_opponent,
+                })
+            order = {slot: n for n, slot in enumerate(["QB", "RB", "WR", "TE", "RB/WR/TE", "OP", "D/ST", "K"])}
+            rows.sort(key=lambda r: (not r["starting"], order.get(r["slot"], 50), -r["projected"]))
+            starters = [r for r in rows if r["starting"]]
+            return {
+                "team": team.team_name if team else "Bye",
+                "team_id": team.team_id if team else None,
+                "score": round(getattr(box, f"{side}_score") or 0.0, 1),
+                "projected": round(getattr(box, f"{side}_projected") or 0.0, 1),
+                "live_projection": live_projection(rows),
+                "yet_to_play": sum(1 for r in starters if r["state"] == "upcoming"),
+                "playing": sum(1 for r in starters if r["state"] == "live"),
+                "players": rows,
+            }
+
+        views = {side: side_view(side, team) for side, team in sides}
+        mine_side = next(side for side, team in sides if team and team.team_id == team_id)
+        other_side = "away" if mine_side == "home" else "home"
+        me, them = views[mine_side], views[other_side]
+        finished = all(
+            r["state"] in ("final", "bye") for v in (me, them) for r in v["players"] if r["starting"]
+        )
+        return {
+            "week": week,
+            "me": me,
+            "them": them,
+            "finished": finished,
+            "checked_at": now.strftime("%-I:%M %p"),
+        }
+    return {"week": week, "bye": True}
+
+
+# ---------------------------------------------------------------------------
 # The web server
 # ---------------------------------------------------------------------------
 
@@ -453,6 +580,12 @@ def make_handler(state):
                 self._send(PAGE_HTML.encode(), "text/html; charset=utf-8")
             elif self.path == "/api/leagues":
                 self._send(state.overview())
+            elif self.path.startswith("/api/scoreboard/"):
+                try:
+                    league_id = int(self.path.rsplit("/", 1)[1])
+                except ValueError:
+                    return self.send_error(404)
+                self._send(state.scoreboard(league_id))
             elif self.path.startswith("/api/league/"):
                 try:
                     league_id = int(self.path.rsplit("/", 1)[1])
