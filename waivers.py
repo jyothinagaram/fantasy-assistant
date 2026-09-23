@@ -166,6 +166,15 @@ def team_value(players, slots, weeks, first_week):
     return round(total, 2)
 
 
+# How many claims to show per position before the rest are folded away.
+# Claims at the same position are ALTERNATIVES for one lineup slot, not
+# moves you can stack, so a long run of them is one decision wearing
+# several hats. One slot positions get one; at running back, receiver and
+# tight end you may genuinely want two of them.
+CLAIMS_PER_POSITION = {"QB": 1, "K": 1, "D/ST": 1}
+DEFAULT_CLAIMS_PER_POSITION = 2
+
+
 # ---------------------------------------------------------------------------
 # Finding the best swaps
 # ---------------------------------------------------------------------------
@@ -223,6 +232,48 @@ def best_swaps(my_players, free_agents, slots, weeks, first_week, roster_full=Tr
 
     swaps.sort(key=lambda s: s["total_gain"], reverse=True)
     return swaps
+
+
+def rank_claims(swaps, limit=None):
+    """
+    The claims worth showing, with same-slot alternatives folded away.
+
+    Six quarterbacks in a row is not six moves, it is one move with five
+    runners-up, and printing them all buries the running back who would
+    actually change your season. Returns (claims, {position: how many more
+    there were}), so the page can say what it folded rather than hide it.
+    """
+    kept, hidden, seen = [], {}, {}
+    for swap in swaps:
+        position = swap["add"].get("position")
+        cap = CLAIMS_PER_POSITION.get(position, DEFAULT_CLAIMS_PER_POSITION)
+        if seen.get(position, 0) >= cap:
+            hidden[position] = hidden.get(position, 0) + 1
+            continue
+        seen[position] = seen.get(position, 0) + 1
+        kept.append(swap)
+    if limit is not None:
+        for swap in kept[limit:]:
+            position = swap["add"].get("position")
+            hidden[position] = hidden.get(position, 0) + 1
+        kept = kept[:limit]
+    return kept, hidden
+
+
+def shared_drops(swaps):
+    """
+    {name: how many of these claims drop him}, for anyone dropped more than
+    once. Each claim is costed on its own and assumes that one move, so the
+    same roster spot can be spent by several of them -- true of every claim
+    when you have exactly one player worth cutting, and worth saying out
+    loud before somebody makes two of them.
+    """
+    counts = {}
+    for swap in swaps:
+        drop = swap.get("drop")
+        if drop:
+            counts[drop["name"]] = counts.get(drop["name"], 0) + 1
+    return {name: count for name, count in counts.items() if count > 1}
 
 
 def bye_weeks_covered(pickup, my_players, weeks):

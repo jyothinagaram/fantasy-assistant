@@ -139,6 +139,16 @@ The draft tooling is built and tested. Files:
   ties drop the weaker player. FAAB bids are a flagged heuristic: a share of
   budget *remaining*, tiered by points/week gained, x1.5 if the player is over
   50% owned across ESPN. Recalibrate once real bid history exists.
+- **Claims at one position are alternatives for one slot, not moves you can
+  stack (2026-09-22).** `waivers.rank_claims` keeps the best 1 at QB/K/D-ST
+  and 2 at RB/WR/TE and counts the rest, because a run of six quarterbacks
+  is one decision with five runners-up and it was burying the running back
+  that would actually matter. `waivers.shared_drops` names anyone who is
+  the drop on more than one claim — each claim is costed on its own and
+  assumes only that move, so the same roster spot gets spent repeatedly
+  (every D.C.F. claim dropped Mack Hollins). The CLI had both of these all
+  along; **the app had drifted** and showed a flat top-15 with three
+  kickers in it. Both are now shown under the claims deck.
 - `waiver_wire.py` — the waiver command. `.venv/bin/python waiver_wire.py`
   prints, per league: waiver schedule, FAAB left (yours and the richest
   opponents'), and ranked ADD / DROP / bid suggestions with the facts behind
@@ -244,10 +254,24 @@ The draft tooling is built and tested. Files:
   verdicts, and that narrowing the search leaves the valuation identical.
 - `situation.py` — games that no longer describe the player. A season
   average is only evidence if the games in it were played in the situation
-  he is in now. From the nflverse play-by-play already on disk it finds the
-  weeks a receiver's passes were thrown by somebody other than the
-  quarterback his team should be starting now, marks them `stale_games`,
-  and `waivers.per_game_value` stops counting them — so his value falls back
+  he is in now. Two kinds of game are marked `stale_games`, and
+  `waivers.per_game_value` stops counting them: **(1) a different
+  quarterback** — a receiver's passes thrown by somebody other than the man
+  his team should be starting now (from the nflverse play-by-play already
+  on disk); **(2) a game he did not play** — one cut short by injury, from
+  the snap counts. Kyler Murray played 11 snaps, 17% of week 1, and scored
+  −0.38; that number says nothing about how he plays and everything about
+  when he left, and it was holding him at 13.9 against an 18.5 projection.
+  After: 17.5. (It also made Bryce Young look like a +3.3/wk claim; he is
+  +2.6 once Murray is priced properly — the two corrections interact.)
+  A cut-short game is judged against the player's OWN median snap share
+  (`PART_OF_HIS_NORMAL`), so a committee back at 30% every week is not
+  mistaken for a limp-off. With fewer than two other games to compare,
+  **only quarterbacks** get an absolute floor (`QB_PLAYED_THE_GAME`),
+  because a starting QB plays every snap and 17% cannot mean anything else;
+  there is deliberately no floor at the other positions, whose roles vary
+  too much for one to be honest. Snap counts also tell us **which** weeks a
+  player actually played, which is better than the old "last N weeks" guess — so his value falls back
   toward the projections. **The case that prompted it (2026-09-22):** Drake
   London's only two games were thrown by Cooper Rush with Michael Penix Jr.
   hurt, so his 7.2 average was a real number about an offence that no longer
@@ -272,7 +296,10 @@ The draft tooling is built and tested. Files:
   missing play-by-play file marks nothing and changes nothing.
 - `test_situation.py` — the London case, the mirror case that flatters, the
   no-change case, the injured/third-string guards, the unrostered-starter
-  bug, running backs untouched, and a missing file.
+  bug, running backs untouched, a missing file; and for cut-short games:
+  Murray's 17%, a full game left alone, a committee back at a steady 30%
+  NOT flagged, the same back flagged when he drops to 5%, and no absolute
+  floor away from quarterback.
 - `coach.py` + `team_report.py` — the team check-up, meant to be run FIRST
   each week. (1) Results: last week's score, league-wide rank of that score,
   points left on the bench (best legal lineup from actual points, IR slot

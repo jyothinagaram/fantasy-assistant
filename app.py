@@ -152,6 +152,11 @@ def waivers_view(report, gems):
         }
 
     worth = [s for s in report["swaps"] if s["gain_per_week"] >= waivers.WORTH_A_CLAIM]
+    # Alternatives for one slot are folded away, and the fact that several
+    # claims spend the same roster spot is said rather than left to be
+    # discovered. Both match what the CLI has always done. See `waivers`.
+    shown, folded = waivers.rank_claims(worth, CLAIMS_SHOWN)
+    repeated = waivers.shared_drops(shown)
     gem_rows = []
     for gem in gems[:GEMS_SHOWN]:
         swap = by_id.get(gem["player_id"])
@@ -174,7 +179,15 @@ def waivers_view(report, gems):
         "market": bids.describe(report.get("market")),
         "big_spenders": [m for m in (report.get("market") or {}).get("managers", [])][:4],
         "gems": gem_rows,
-        "claims": [claim(s) for s in worth[:CLAIMS_SHOWN]],
+        "claims": [claim(s) for s in shown],
+        "folded": [
+            {"position": position, "count": count}
+            for position, count in sorted(folded.items(), key=lambda kv: -kv[1])
+        ],
+        "shared_drop": [
+            {"name": name, "count": count}
+            for name, count in sorted(repeated.items(), key=lambda kv: -kv[1])
+        ],
         "weeks": [report["weeks"][0], report["weeks"][-1]] if report["weeks"] else None,
     }
 

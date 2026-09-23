@@ -132,6 +132,42 @@ def test_bids_are_sane():
     assert bids == sorted(bids), bids
 
 
+def claim(name, position, gain, drop_name="Spare Man"):
+    return {"add": {"name": name, "position": position},
+            "drop": {"name": drop_name}, "gain_per_week": gain}
+
+
+def test_same_slot_alternatives_are_folded_away():
+    swaps = [claim(f"QB{n}", "QB", 5 - n) for n in range(6)]
+    swaps += [claim("A Back", "RB", 1.0), claim("Another Back", "RB", 0.9),
+              claim("Third Back", "RB", 0.8)]
+    kept, folded = waivers.rank_claims(swaps)
+    assert [c["add"]["name"] for c in kept] == ["QB0", "A Back", "Another Back"], kept
+    # One quarterback slot, so five runners-up; two backs shown, one folded.
+    assert folded == {"QB": 5, "RB": 1}, folded
+
+
+def test_a_kicker_never_crowds_the_list():
+    swaps = [claim(f"K{n}", "K", 2 - n / 10) for n in range(4)]
+    kept, folded = waivers.rank_claims(swaps)
+    assert len(kept) == 1 and folded == {"K": 3}, (kept, folded)
+
+
+def test_folding_counts_what_the_limit_cut_too():
+    swaps = [claim("A Back", "RB", 3), claim("A Receiver", "WR", 2), claim("A TE", "TE", 1)]
+    kept, folded = waivers.rank_claims(swaps, limit=1)
+    assert [c["add"]["name"] for c in kept] == ["A Back"]
+    assert folded == {"WR": 1, "TE": 1}, folded
+
+
+def test_a_drop_spent_twice_is_reported():
+    swaps = [claim("A Back", "RB", 3, "Mack Hollins"),
+             claim("A Receiver", "WR", 2, "Mack Hollins"),
+             claim("A TE", "TE", 1, "Somebody Else")]
+    assert waivers.shared_drops(swaps) == {"Mack Hollins": 2}
+    assert waivers.shared_drops(swaps[:1]) == {}
+
+
 if __name__ == "__main__":
     tests = [value for name, value in dict(globals()).items() if name.startswith("test_")]
     for test in tests:

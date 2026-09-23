@@ -9,9 +9,16 @@ team that no longer exists. Blending it into his value -- which is what
 `waivers.per_game_value` does with every game -- charged him for a
 quarterback he will not be playing with again.
 
-So this finds, from the free nflverse play-by-play already on disk, the
-games a pass-catcher played with a DIFFERENT quarterback than the one his
-team is expected to start now, and marks them stale. Those games stop
+So this finds two kinds of game that are not evidence, and marks them
+stale:
+
+  1. A DIFFERENT QUARTERBACK. Games a pass-catcher played with someone
+     other than the quarterback his team is expected to start now.
+  2. A GAME HE DID NOT PLAY. A game cut short -- the injury in the first
+     quarter, the concussion check he never came back from. Kyler Murray
+     played eleven snaps, 17% of the game, and scored -0.38; that number
+     says nothing about how he plays and everything about when he left,
+     and it was dragging his value from an 18.5 projection down to 13.9. Those games stop
 counting toward his average, so his value leans on the projections instead
 -- which is the right place to lean when the only real evidence describes a
 different offence.
@@ -40,8 +47,17 @@ on the board:
   * The expected starter must look like a real starter (a projection worth
     starting). Otherwise a rostered third-stringer on a team whose actual
     starter nobody rosters would mark every week stale.
-  * Nothing is ever marked stale for the quarterback himself, or for
-    kickers and defences. A quarterback's own games describe his own play.
+  * A quarterback's own games are never stale for reason (1) -- his own
+    play is his own play -- and kickers and defences have no snap counts,
+    so neither rule reaches them.
+  * Reason (2) is judged against the player HIMSELF wherever possible: a
+    committee back who takes 30% of the snaps every week is doing his job,
+    not limping off, so only a game far below his own normal counts. A
+    player with no other game to compare against gets an absolute floor,
+    and only at quarterback, where the starter plays every snap and a
+    figure like 17% cannot mean anything else. There is deliberately no
+    absolute floor for the other positions, because their roles vary too
+    much for one to be honest.
 
 FACTS VOTE, PROSE DOES NOT. Every discount here comes with the sentence
 that produced it -- "both his games were thrown by C.Rush, not Michael
@@ -72,6 +88,18 @@ REAL_STARTER_POINTS = 10.0
 
 # Designations that mean a quarterback cannot be the expected starter.
 CANNOT_START = {"OUT", "INJURY_RESERVE", "SUSPENSION", "DOUBTFUL"}
+
+# A game below this share of the player's own normal snap count is a game
+# he did not really play.
+PART_OF_HIS_NORMAL = 0.5
+
+# He needs this many other games before his own normal means anything.
+ENOUGH_TO_COMPARE = 2
+
+# With nothing to compare against, only a quarterback is judged, and only
+# against this: a starting quarterback plays nearly every snap, so a share
+# this low is someone who left or someone who came on when it was over.
+QB_PLAYED_THE_GAME = 0.5
 
 
 def short_name(name):
@@ -119,6 +147,56 @@ def passers_by_week(pbp_text, by_gsis):
     }
 
 
+def snaps_by_week(snaps_text, by_pfr):
+    """{ESPN id: {week: share of his team's offensive snaps}}."""
+    if not snaps_text:
+        return {}
+    found = collections.defaultdict(dict)
+    for row in usage.rows(snaps_text):
+        if row.get("game_type") != "REG":
+            continue
+        espn = by_pfr.get(row.get("pfr_player_id"))
+        week = usage.number(row.get("week"))
+        share = usage.number(row.get("offense_pct"))
+        if espn is None or week is None or share is None:
+            continue
+        found[espn][int(week)] = share
+    return found
+
+
+def median(values):
+    ordered = sorted(values)
+    if not ordered:
+        return None
+    middle = len(ordered) // 2
+    if len(ordered) % 2:
+        return ordered[middle]
+    return (ordered[middle - 1] + ordered[middle]) / 2
+
+
+def games_cut_short(weeks_played, position):
+    """
+    The weeks he was on the field far less than he normally is.
+
+    `weeks_played` is {week: snap share}. Judged against his own median so
+    that a part-time role is not mistaken for an injury; with too little to
+    compare against, only a quarterback is judged, and only against the
+    fact that starting quarterbacks play the whole game.
+    """
+    if not weeks_played:
+        return []
+    short = []
+    for week, share in weeks_played.items():
+        others = [s for w, s in weeks_played.items() if w != week]
+        if len(others) >= ENOUGH_TO_COMPARE:
+            normal = median(others)
+            if normal and share < PART_OF_HIS_NORMAL * normal:
+                short.append(week)
+        elif position == "QB" and share < QB_PLAYED_THE_GAME:
+            short.append(week)
+    return sorted(short)
+
+
 def expected_starters(players, value_of):
     """
     {team: the quarterback it should start now}.
@@ -143,30 +221,34 @@ def expected_starters(players, value_of):
     return best
 
 
-def attach(players, season, value_of, pbp_text=None, players_text=None, also=None):
+def attach(players, season, value_of, pbp_text=None, players_text=None, also=None,
+           snaps_text=None):
     """
-    Marks every pass-catcher whose games were thrown by somebody else.
+    Marks the games that are not evidence about a player any more.
 
     `also` is extra players -- normally the waiver pool -- considered only
     when working out who each team should be starting at quarterback, never
     marked themselves. Leave it out and any team whose starter is
     unrostered will look unchanged.
 
-    Adds `stale_games` (how many of his games no longer describe his
-    situation) and `situation_note` (the sentence that says why) to each
-    player it applies to. Returns a short summary, or None when the
-    play-by-play is unavailable -- in which case nothing is marked and every
-    number stays exactly as it was.
+    Adds `stale_games` (how many of his games no longer describe him) and
+    `situation_note` (the sentence that says why) to each player it applies
+    to. Returns a short summary, or None when nothing could be read -- in
+    which case nothing is marked and every number stays as it was.
     """
     if pbp_text is None:
         pbp_text = redzone.download(season)
     if players_text is None:
         players_text = usage.download("players", season)
+    if snaps_text is None:
+        snaps_text = usage.download("snaps", season)
     if not players_text:
         return None
-    by_gsis, _ = usage.id_maps(players_text)
+
+    by_gsis, by_pfr = usage.id_maps(players_text)
     passers = passers_by_week(pbp_text, by_gsis)
-    if not passers:
+    snaps = snaps_by_week(snaps_text, by_pfr)
+    if not passers and not snaps:
         return None
 
     starters = expected_starters(list(players) + list(also or []), value_of)
@@ -178,40 +260,57 @@ def attach(players, season, value_of, pbp_text=None, players_text=None, also=Non
     for player in players:
         player.setdefault("stale_games", 0)
         player.setdefault("situation_note", None)
-        if player.get("position") not in CATCHES_PASSES:
-            continue
-        team = player.get("pro_team")
-        starter = starters.get(team)
-        if not starter:
-            continue
-        wanted = starter.get("player_id")
-        if wanted is None:
-            continue
-        weeks = sorted(weeks_by_team.get(team, []))
-        if not weeks:
-            continue
-
-        # Only the games he actually played can be stale, and we know how
-        # many those were, not which. Counting from the most recent week
-        # backwards matches how a season average is usually wrong: the old
-        # games are the ones under the old quarterback.
         played = player.get("games_played") or 0
         if not played:
             continue
-        his_weeks = weeks[-played:]
-        stale = [w for w in his_weeks if (passers.get((team, w)) or (None, ""))[0] != wanted]
-        if not stale:
+
+        his_snaps = snaps.get(player.get("player_id")) or {}
+        # Which weeks he actually played, from the snap counts when they are
+        # there. Falling back to "the last N weeks" is only a guess, but it
+        # is the same guess the season average itself makes.
+        if his_snaps:
+            his_weeks = sorted(w for w, share in his_snaps.items() if share)
+        else:
+            team_weeks = sorted(weeks_by_team.get(player.get("pro_team"), []))
+            his_weeks = team_weeks[-played:] if team_weeks else []
+        if not his_weeks:
             continue
 
-        throwers = sorted(
-            {(passers.get((team, w)) or (None, ""))[1] for w in stale}
-            - {""}
-        )
-        player["stale_games"] = len(stale)
-        player["situation_note"] = (
-            f"{len(stale)} of {played} game{'s' if played != 1 else ''} thrown by "
-            f"{', '.join(throwers)}, not {starter['name']}"
-        )
+        stale, reasons = set(), []
+
+        # 1. Somebody else was throwing.
+        if player.get("position") in CATCHES_PASSES:
+            starter = starters.get(player.get("pro_team"))
+            wanted = starter.get("player_id") if starter else None
+            if wanted is not None:
+                elsewhere = [
+                    w for w in his_weeks
+                    if (passers.get((player["pro_team"], w)) or (None, ""))[0] != wanted
+                    and (passers.get((player["pro_team"], w)) or (None, ""))[0] is not None
+                ]
+                if elsewhere:
+                    stale.update(elsewhere)
+                    throwers = sorted(
+                        {(passers.get((player["pro_team"], w)) or (None, ""))[1]
+                         for w in elsewhere} - {""}
+                    )
+                    reasons.append(
+                        f"{len(elsewhere)} of {played} game"
+                        f"{'s' if played != 1 else ''} thrown by "
+                        f"{', '.join(throwers)}, not {starter['name']}"
+                    )
+
+        # 2. He was barely on the field.
+        short = [w for w in games_cut_short(his_snaps, player.get("position")) if w in his_weeks]
+        if short:
+            stale.update(short)
+            shares = ", ".join(f"week {w} {round(his_snaps[w] * 100)}% of snaps" for w in short)
+            reasons.append(f"left {'a game' if len(short) == 1 else 'games'} early ({shares})")
+
+        if not stale:
+            continue
+        player["stale_games"] = min(played, len(stale))
+        player["situation_note"] = "; ".join(reasons)
         changed += 1
 
     return {"players_marked": changed, "teams": len(starters)}

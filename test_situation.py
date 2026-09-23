@@ -15,6 +15,12 @@ PLAYERS_CSV = (
     "00-OTHERQB,,103\n"
 )
 
+# The same mapping, with the snap-count id nflverse uses for snap rows.
+PLAYERS_WITH_PFR = (
+    "gsis_id,pfr_id,espn_id\n"
+    "00-STARTER,MurrKy00,101\n"
+)
+
 
 def pbp(rows):
     out = ["season_type,posteam,week,passer_player_id,passer_player_name"]
@@ -51,7 +57,7 @@ def test_games_thrown_by_someone_else_stop_counting():
 
     before = waivers.per_game_value(catcher)
     situation.attach([starter, catcher], 2026, waivers.per_game_value,
-                     pbp_text=pbp(rows), players_text=PLAYERS_CSV)
+                     pbp_text=pbp(rows), players_text=PLAYERS_CSV, snaps_text="")
     assert catcher["stale_games"] == 2, catcher
     assert "C.Rush" in catcher["situation_note"] and "Penix" in catcher["situation_note"]
     # Every game he has played describes a different offence, so he falls
@@ -68,7 +74,7 @@ def test_it_cuts_both_ways():
     rows = [("SEA", 1, "00-BACKUP", "D.Lock"), ("SEA", 2, "00-BACKUP", "D.Lock")]
     before = waivers.per_game_value(catcher)
     situation.attach([starter, catcher], 2026, waivers.per_game_value,
-                     pbp_text=pbp(rows), players_text=PLAYERS_CSV)
+                     pbp_text=pbp(rows), players_text=PLAYERS_CSV, snaps_text="")
     assert waivers.per_game_value(catcher) < before
 
 
@@ -78,7 +84,7 @@ def test_nothing_changes_when_the_starter_is_the_one_throwing():
     rows = [("ATL", 1, "00-STARTER", "M.Penix"), ("ATL", 2, "00-STARTER", "M.Penix")]
     before = waivers.per_game_value(catcher)
     situation.attach([starter, catcher], 2026, waivers.per_game_value,
-                     pbp_text=pbp(rows), players_text=PLAYERS_CSV)
+                     pbp_text=pbp(rows), players_text=PLAYERS_CSV, snaps_text="")
     assert catcher["stale_games"] == 0
     assert waivers.per_game_value(catcher) == before
 
@@ -89,7 +95,7 @@ def test_an_injured_quarterback_is_never_the_benchmark():
     catcher = player("Drake London", "WR", "ATL", 201, avg=7.2, games=2, projected=15.4)
     rows = [("ATL", 1, "00-BACKUP", "C.Rush"), ("ATL", 2, "00-BACKUP", "C.Rush")]
     situation.attach([hurt, catcher], 2026, waivers.per_game_value,
-                     pbp_text=pbp(rows), players_text=PLAYERS_CSV)
+                     pbp_text=pbp(rows), players_text=PLAYERS_CSV, snaps_text="")
     assert catcher["stale_games"] == 0, catcher
 
 
@@ -99,7 +105,7 @@ def test_a_third_stringer_is_not_treated_as_the_plan():
     catcher = player("Drake London", "WR", "ATL", 201, avg=7.2, games=2, projected=15.4)
     rows = [("ATL", 1, "00-BACKUP", "C.Rush"), ("ATL", 2, "00-BACKUP", "C.Rush")]
     situation.attach([scrub, catcher], 2026, waivers.per_game_value,
-                     pbp_text=pbp(rows), players_text=PLAYERS_CSV)
+                     pbp_text=pbp(rows), players_text=PLAYERS_CSV, snaps_text="")
     assert catcher["stale_games"] == 0, catcher
 
 
@@ -110,11 +116,11 @@ def test_the_waiver_pool_counts_toward_who_should_be_starting():
     rows = [("ATL", 1, "00-BACKUP", "C.Rush"), ("ATL", 2, "00-BACKUP", "C.Rush")]
 
     situation.attach([catcher], 2026, waivers.per_game_value,
-                     pbp_text=pbp(rows), players_text=PLAYERS_CSV)
+                     pbp_text=pbp(rows), players_text=PLAYERS_CSV, snaps_text="")
     assert catcher["stale_games"] == 0, "with no quarterback in sight, nothing to compare"
 
     situation.attach([catcher], 2026, waivers.per_game_value, pbp_text=pbp(rows),
-                     players_text=PLAYERS_CSV, also=[free_starter])
+                     players_text=PLAYERS_CSV, snaps_text="", also=[free_starter])
     assert catcher["stale_games"] == 2, catcher
 
 
@@ -125,9 +131,68 @@ def test_running_backs_are_left_alone():
     rows = [("ATL", 1, "00-BACKUP", "C.Rush"), ("ATL", 2, "00-BACKUP", "C.Rush")]
     before = waivers.per_game_value(back)
     situation.attach([starter, back], 2026, waivers.per_game_value,
-                     pbp_text=pbp(rows), players_text=PLAYERS_CSV)
+                     pbp_text=pbp(rows), players_text=PLAYERS_CSV, snaps_text="")
     assert back["stale_games"] == 0, back
     assert waivers.per_game_value(back) == before
+
+
+SNAPS_HEADER = "game_type,week,pfr_player_id,offense_pct\n"
+
+
+def snaps(rows):
+    return SNAPS_HEADER + "".join(f"REG,{week},{pfr},{pct}\n" for week, pfr, pct in rows)
+
+
+def test_a_game_he_left_early_stops_counting():
+    """Kyler Murray: 11 snaps, 17% of the game, -0.38 points."""
+    qb = player("Kyler Murray", "QB", "MIN", 101, avg=-0.38, games=1, projected=17.5)
+    before = waivers.per_game_value(qb)
+    situation.attach([qb], 2026, waivers.per_game_value, pbp_text="",
+                     players_text=PLAYERS_WITH_PFR, snaps_text=snaps([(1, "MurrKy00", 0.17)]))
+    assert qb["stale_games"] == 1, qb
+    assert "17% of snaps" in qb["situation_note"], qb["situation_note"]
+    after = waivers.per_game_value(qb)
+    assert after > before and abs(after - 17.5) < 0.01, (before, after)
+
+
+def test_a_full_game_is_left_alone():
+    qb = player("Healthy QB", "QB", "MIN", 101, avg=-0.38, games=1, projected=17.5)
+    before = waivers.per_game_value(qb)
+    situation.attach([qb], 2026, waivers.per_game_value, pbp_text="",
+                     players_text=PLAYERS_WITH_PFR, snaps_text=snaps([(1, "MurrKy00", 0.98)]))
+    assert qb["stale_games"] == 0, qb
+    assert waivers.per_game_value(qb) == before
+
+
+def test_a_part_time_role_is_not_an_injury():
+    """A committee back at 30% every week is doing his job."""
+    back = player("Committee Back", "RB", "MIN", 101, avg=8.0, games=3, projected=9.0)
+    rows = [(1, "MurrKy00", 0.30), (2, "MurrKy00", 0.31), (3, "MurrKy00", 0.29)]
+    before = waivers.per_game_value(back)
+    situation.attach([back], 2026, waivers.per_game_value, pbp_text="",
+                     players_text=PLAYERS_WITH_PFR, snaps_text=snaps(rows))
+    assert back["stale_games"] == 0, back
+    assert waivers.per_game_value(back) == before
+
+
+def test_a_back_judged_against_his_own_normal():
+    """Same back, but one week he limps off after two carries."""
+    back = player("Committee Back", "RB", "MIN", 101, avg=8.0, games=3, projected=9.0)
+    rows = [(1, "MurrKy00", 0.30), (2, "MurrKy00", 0.31), (3, "MurrKy00", 0.05)]
+    situation.attach([back], 2026, waivers.per_game_value, pbp_text="",
+                     players_text=PLAYERS_WITH_PFR, snaps_text=snaps(rows))
+    assert back["stale_games"] == 1, back
+    assert "week 3" in back["situation_note"], back["situation_note"]
+
+
+def test_no_absolute_floor_away_from_quarterback():
+    """One game at 20% could be this receiver's whole role; we cannot tell."""
+    wr = player("Rotational WR", "WR", "MIN", 101, avg=4.0, games=1, projected=6.0)
+    before = waivers.per_game_value(wr)
+    situation.attach([wr], 2026, waivers.per_game_value, pbp_text="",
+                     players_text=PLAYERS_WITH_PFR, snaps_text=snaps([(1, "MurrKy00", 0.20)]))
+    assert wr["stale_games"] == 0, wr
+    assert waivers.per_game_value(wr) == before
 
 
 def test_a_missing_play_by_play_changes_nothing():
@@ -135,7 +200,7 @@ def test_a_missing_play_by_play_changes_nothing():
     catcher = player("Drake London", "WR", "ATL", 201, avg=7.2, games=2, projected=15.4)
     before = waivers.per_game_value(catcher)
     assert situation.attach([starter, catcher], 2026, waivers.per_game_value,
-                            pbp_text="", players_text=PLAYERS_CSV) is None
+                            pbp_text="", players_text=PLAYERS_CSV, snaps_text="") is None
     assert waivers.per_game_value(catcher) == before
 
 

@@ -479,6 +479,7 @@ function renderWaivers(d) {
   html += `</div>`;
 
   html += deckHead("Best claims on today's numbers", w.claims.length, "claims");
+  html += claimNotes(w);
   if (!w.claims.length) html += `<div class="card muted">No free agent adds at least half a point a week to your lineup.</div>`;
   html += `<div class="deck">`;
   for (const c of w.claims) {
@@ -591,6 +592,24 @@ function renderRoster(d, team) {
     ${ir.length ? `<h2>Injured reserve</h2><div class="card">${ir.map(row).join("")}</div>` : ""}
     <div class="muted small">Points per week are what each player scores for their team in a normal week. Lineup is how they have it set on ESPN right now.</div>
   </div>`;
+}
+
+// Two things that are true of every claims list and easy to misread: the
+// runners-up for a slot you can only fill once, and the fact that several
+// claims spend the same roster spot.
+function claimNotes(w) {
+  const bits = [];
+  if ((w.folded || []).length) {
+    bits.push("More were close at " + w.folded.map(f =>
+      `${esc(f.position)} (${f.count} more)`).join(", ")
+      + " — claims at one position are alternatives for the same slot, not moves you can stack.");
+  }
+  (w.shared_drop || []).forEach(d => {
+    bits.push(`${esc(d.name)} is the drop on ${d.count} of these — he can only be dropped once, so once a claim goes through, refresh before relying on the next.`);
+  });
+  return bits.length
+    ? `<div class="muted small" style="margin:-4px 0 10px">${bits.join("<br>")}</div>`
+    : "";
 }
 
 function renderTrades(d) {
@@ -786,6 +805,7 @@ function renderGuide() {
       ["What to bid", "A suggested FAAB bid. Once your league has five claims above the minimum bid, it adjusts to what winning claims actually cost there."],
     ])}
     ${section("Trades", "Trades that help both sides — the ones that get accepted", [
+      ["Why only one or two claims per position", "Claims at the same position are alternatives for one lineup slot, not moves you can stack — six quarterbacks in a row is one decision with five runners-up. The best one or two at each position are shown and the rest are counted under the list, so a running back who would actually change your season isn't buried under kickers."],
       ["Trade ideas", "One-for-one and two-for-one trades with every team that improve both lineups. A trade whose whole gain sits at a position you could refill off the waiver wire for free is set aside under \"waivers can fix for free\" — it's still shown, just not sold to you, because a claim costs nothing and a trade costs a player."],
       ["What I need", "Points a week your best lineup leaks at each spot — what one league-average starter there would add. Not \"you only have two running backs\": a hole is only a hole if it is costing you points."],
       ["What I can spare", "What losing a player would actually cost you, once the next man slides into his slot. A fourth receiver on a team that starts three is worth about nothing to you and possibly a lot to someone else."],
