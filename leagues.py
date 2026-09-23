@@ -30,7 +30,13 @@ FOOTBALL_GAME_ID = 1
 
 
 def load_credentials():
-    """Reads your .env file and makes sure the required values are there."""
+    """
+    Reads your settings and makes sure the required ones are there.
+
+    From a `.env` file on your own computer, or from real environment
+    variables when this runs on a host -- `load_dotenv` fills in the first
+    and leaves the second alone, so the same code works in both places.
+    """
     load_dotenv()
 
     creds = {
@@ -40,11 +46,24 @@ def load_credentials():
     }
 
     if not creds["season"]:
+        # Say both, because the answer depends on where this is running and
+        # the message is read by someone who has just watched a deploy fail.
+        # Pointing a server at a .env file it will never have wastes the one
+        # piece of information they actually needed.
         sys.exit(
-            "Missing ESPN_SEASON in your .env file. "
-            "Copy .env.example to .env and fill it in."
+            "Missing ESPN_SEASON.\n"
+            "  On this computer: copy .env.example to .env and fill it in.\n"
+            "  On a host (Render and the like): add ESPN_SEASON as an "
+            "environment variable -- e.g. ESPN_SEASON=2026 -- then deploy "
+            "again. ESPN_S2 and ESPN_SWID are set the same way.\n"
+            "  See DEPLOY.md."
         )
-    creds["season"] = int(creds["season"])
+    try:
+        creds["season"] = int(creds["season"])
+    except ValueError:
+        sys.exit(
+            f"ESPN_SEASON should be a year like 2026, not {creds['season']!r}."
+        )
     return creds
 
 
