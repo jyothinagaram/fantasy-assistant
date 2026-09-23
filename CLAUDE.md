@@ -403,6 +403,15 @@ The draft tooling is built and tested. Files:
   for games, unknown teams.
 - `test_usage.py` — ID matching, snap trend, preseason rows ignored, shares,
   and missing files.
+- **The league you are looking at jumps the queue (2026-09-23).** Leagues are
+  worked out one at a time (never in parallel — the ESPN library shares
+  scoring settings between connections). On a laptop the order barely
+  matters; on a free host a build takes minutes, so waiting through two
+  leagues nobody asked for to reach the one on screen is the difference
+  between slow and apparently broken. `AppState.league` calls `prioritise`
+  when it has nothing saved, which moves that league to position 1 —
+  **behind** the build already in progress, which must never be interrupted
+  partway. `test_app_queue.py` covers it.
 - `auth.py` + `test_auth.py` — the password on the front door, for when the
   app runs anywhere but the user's Mac. **Off by default**: with no
   `APP_PASSWORD` set there is no login at all and running at home is

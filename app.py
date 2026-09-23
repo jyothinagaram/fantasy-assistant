@@ -517,7 +517,29 @@ class AppState:
     def league(self, league_id):
         with self.lock:
             entry = self.data.get(league_id)
-            return entry["payload"] if entry else None
+        if entry:
+            return entry["payload"]
+        # Nothing saved for the league somebody is actually looking at.
+        # Work it out next rather than in whatever order the queue happens
+        # to be in: on a small host a build takes minutes, and waiting
+        # through two leagues nobody asked for to reach the one on screen
+        # is the difference between a slow app and an app that looks
+        # broken. The league being built right now is left alone -- the
+        # ESPN library shares scoring settings between connections, so a
+        # build must never be interrupted partway (see CLAUDE.md).
+        self.prioritise(league_id)
+        return None
+
+    def prioritise(self, league_id):
+        """Moves a league to the front of the queue, behind the one in progress."""
+        with self.work:
+            if league_id not in self.queue:
+                return
+            if self.queue.index(league_id) <= 1:
+                return          # already in progress, or already next
+            self.queue.remove(league_id)
+            self.queue.insert(1, league_id)
+            self.work.notify()
 
     def scoreboard(self, league_id):
         """This week's head-to-head as it stands right now, cached briefly."""
