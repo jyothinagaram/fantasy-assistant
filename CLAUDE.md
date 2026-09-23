@@ -403,6 +403,29 @@ The draft tooling is built and tested. Files:
   for games, unknown teams.
 - `test_usage.py` — ID matching, snap trend, preseason rows ignored, shares,
   and missing files.
+- `auth.py` + `test_auth.py` — the password on the front door, for when the
+  app runs anywhere but the user's Mac. **Off by default**: with no
+  `APP_PASSWORD` set there is no login at all and running at home is
+  unchanged, which is why nothing about the local experience moved. One
+  shared password (there is one user, so there are no accounts). The
+  password is never stored, logged, or put in the cookie — the cookie holds
+  an expiry and an HMAC over it, so a stolen one dies on schedule and
+  cannot be edited to last longer. Comparisons use `hmac.compare_digest`,
+  because `==` leaks how much of a guess was right. Wrong guesses lock the
+  address out for 5 minutes after 5 tries. The cookie is HttpOnly +
+  SameSite=Lax, and Secure whenever `X-Forwarded-Proto` says the request
+  arrived over HTTPS (so it still works on a plain-HTTP local run). The
+  secret is derived from the password unless `APP_SECRET` is set, so
+  changing the password signs everyone out. A 401 from any API makes the
+  page reload into the login form rather than sit on stale numbers.
+- `render.yaml` + `DEPLOY.md` — free hosting so the app works from a phone
+  with the Mac shut (the goal noted since 2026-09-14). Every secret is
+  `sync: false`, i.e. entered in Render and never in this public repo.
+  `PORT` is read before `APP_PORT` so the same file runs on a laptop and a
+  host. **The free plan sleeps after 15 minutes and wipes its disk on
+  waking**, which is what would cause a 3-minute rebuild of all three
+  leagues on every visit; a free UptimeRobot ping every 5 minutes keeps it
+  awake so the cache survives. That is the whole reason the pinger exists.
 - `app.py` + `app_page.py` — the in-season web app, the main way the user
   wants to use the tool. `.venv/bin/python app.py` opens it in the browser
   and prints a phone address (same Wi-Fi; binds 0.0.0.0 unless

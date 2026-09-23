@@ -1,0 +1,30 @@
+# Deploying this to Render's free tier. See DEPLOY.md for the walkthrough.
+#
+# Nothing secret lives in this file. Every value that matters -- your ESPN
+# cookies and the password for the page -- is marked `sync: false`, which
+# tells Render to ask you for it once and keep it on its own side. They are
+# never written to the repository, which is public.
+services:
+  - type: web
+    name: fantasy-assistant
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python app.py
+    healthCheckPath: /
+    envVars:
+      # Pinned so a Render-side default change cannot break the build later.
+      - key: PYTHON_VERSION
+        value: "3.11.9"
+      # There is no browser to open on a server.
+      - key: APP_NO_BROWSER
+        value: "1"
+      # Asked for at deploy time, stored by Render, never in git:
+      - key: APP_PASSWORD      # the password for the page itself
+        sync: false
+      - key: ESPN_S2           # your ESPN cookie
+        sync: false
+      - key: ESPN_SWID         # your ESPN cookie
+        sync: false
+      - key: ESPN_SEASON       # e.g. 2026
+        sync: false

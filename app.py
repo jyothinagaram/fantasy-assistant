@@ -43,12 +43,15 @@ import needs
 import status
 import trades
 import usage
+import auth
 import waiver_wire
 import waivers
 from app_page import PAGE_HTML
 
 
-PORT = int(os.getenv("APP_PORT", "8780"))
+# A host tells us which port to listen on through PORT; APP_PORT is the
+# local override. Both, so the same file runs on a laptop and on Render.
+PORT = int(os.getenv("PORT") or os.getenv("APP_PORT") or "8780")
 LOCAL_ONLY = os.getenv("APP_LOCAL_ONLY") == "1"
 CACHE_DIR = "cache"
 
@@ -675,10 +678,69 @@ def build_scoreboard(league, team_id):
 # The web server
 # ---------------------------------------------------------------------------
 
+LOGIN_PAGE = """<!doctype html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Fantasy Assistant</title>
+<style>
+ :root { color-scheme: dark; }
+ body { margin:0; min-height:100vh; display:grid; place-items:center; background:#0b0d10;
+        color:#e8eaed; font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+ form { width:min(92vw,340px); background:#14171c; border:1px solid #242a33;
+        border-radius:16px; padding:22px; }
+ h1 { font-size:18px; margin:0 0 4px; }
+ p { color:#9aa4b2; font-size:13px; margin:0 0 16px; }
+ input { width:100%; box-sizing:border-box; padding:12px; font-size:16px; border-radius:11px;
+         border:1px solid #242a33; background:#0b0d10; color:#e8eaed; }
+ button { width:100%; margin-top:12px; padding:12px; font-size:16px; font-weight:600;
+          border:0; border-radius:11px; background:#3b82f6; color:#fff; }
+ .bad { color:#f87171; font-size:13px; margin-top:12px; }
+</style></head><body>
+<form method="POST" action="/login">
+  <h1>Fantasy Assistant</h1>
+  <p>Enter the password to see your teams.</p>
+  <input type="password" name="password" autofocus autocomplete="current-password"
+         placeholder="Password" aria-label="Password">
+  <button type="submit">Sign in</button>
+  __ERROR__
+</form></body></html>"""
+
+
 def make_handler(state):
+    attempts = auth.Attempts()
+
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *args):
             pass
+
+        # -- the front door ------------------------------------------------
+        # Everything below is behind this when APP_PASSWORD is set. With no
+        # password set nothing changes, which is how running at home stays
+        # exactly as it was. See `auth.py`.
+
+        def secure(self):
+            """Did this request reach us over HTTPS? Hosts say so in a header."""
+            forwarded = (self.headers.get("X-Forwarded-Proto") or "").lower()
+            return forwarded == "https" if forwarded else False
+
+        def caller(self):
+            forwarded = (self.headers.get("X-Forwarded-For") or "").split(",")[0].strip()
+            return forwarded or self.client_address[0]
+
+        def signed_in(self):
+            if not auth.password():
+                return True
+            return auth.valid(auth.read_cookie(self.headers.get("Cookie")))
+
+        def send_login(self, error="", code=200):
+            body = LOGIN_PAGE.replace(
+                "__ERROR__", f'<div class="bad">{error}</div>' if error else ""
+            ).encode()
+            self.send_response(code)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(body)
 
         def _send(self, payload, content_type="application/json", code=200):
             body = payload if isinstance(payload, bytes) else json.dumps(payload, default=str).encode()
@@ -690,6 +752,12 @@ def make_handler(state):
             self.wfile.write(body)
 
         def do_GET(self):
+            if not self.signed_in():
+                # An API call gets a status code the page can act on; a
+                # person gets the login form.
+                if self.path.startswith("/api/"):
+                    return self._send({"error": "signed out"}, code=401)
+                return self.send_login()
             if self.path in ("/", "/index.html"):
                 self._send(PAGE_HTML.encode(), "text/html; charset=utf-8")
             elif self.path == "/api/leagues":
@@ -712,8 +780,15 @@ def make_handler(state):
 
         def do_POST(self):
             length = int(self.headers.get("Content-Length") or 0)
+            raw = self.rfile.read(length) if length else b""
+
+            if self.path == "/login":
+                return self.handle_login(raw)
+            if not self.signed_in():
+                return self._send({"error": "signed out"}, code=401)
+
             try:
-                data = json.loads(self.rfile.read(length) or b"{}")
+                data = json.loads(raw or b"{}")
             except ValueError:
                 return self.send_error(400)
 
@@ -728,6 +803,28 @@ def make_handler(state):
                 ))
             else:
                 self.send_error(404)
+
+        def handle_login(self, raw):
+            import urllib.parse
+            who = self.caller()
+            waiting = attempts.locked(who)
+            if waiting:
+                return self.send_login(
+                    f"Too many attempts. Try again in {waiting // 60 + 1} minute(s).",
+                    code=429,
+                )
+            fields = urllib.parse.parse_qs(raw.decode("utf-8", "replace"))
+            given = (fields.get("password") or [""])[0]
+            if not auth.correct(given):
+                attempts.failed(who)
+                return self.send_login("Wrong password.", code=401)
+
+            attempts.passed(who)
+            self.send_response(303)
+            self.send_header("Location", "/")
+            self.send_header("Set-Cookie", auth.new_cookie(https=self.secure()))
+            self.send_header("Content-Length", "0")
+            self.end_headers()
 
     return Handler
 

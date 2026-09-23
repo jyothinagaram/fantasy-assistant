@@ -224,6 +224,10 @@ function recall(key) { try { return localStorage.getItem(key); } catch (e) { ret
 async function api(path, body) {
   const options = body ? { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body) } : {};
   const response = await fetch(path, options);
+  // The session ran out (or the password changed). Reloading lands on the
+  // login form rather than leaving a page full of stale numbers that
+  // quietly stop updating.
+  if (response.status === 401) { location.reload(); return new Promise(() => {}); }
   return response.json();
 }
 
