@@ -39,6 +39,7 @@ import leagues
 import consistency
 import lineup
 import matchup
+import needs
 import status
 import trades
 import usage
@@ -87,6 +88,9 @@ def player_view(p):
         "matchup_quality": p.get("matchup_quality"),
         "playoffs": p.get("playoffs"),
         "playoff_bye": bool(p.get("playoff_bye")),
+        # Why his average was set aside, when it was. Shown, so the discount
+        # can be checked against the box score. See `situation.py`.
+        "situation": p.get("situation_note"),
     }
 
 
@@ -188,6 +192,84 @@ def trade_view(result):
         "they_cut": [p["name"] for p in result["they_cut"]],
         "paper_give": give_points,
         "paper_get": get_points,
+        "perception": perception_view(result.get("perception")),
+    }
+
+
+def perception_view(seen):
+    """How the offer reads to the other manager. Never affects the numbers."""
+    if not seen:
+        return None
+    return {
+        "reads": seen["reads"],
+        "pitch": seen["pitch"],
+        "paper_for_them": seen["paper_for_them"],
+        "fills": [
+            {
+                "name": fill["player"]["name"],
+                "position": fill["position"],
+                "need_per_week": fill["need_per_week"],
+            }
+            for fill in seen["fills"]
+        ],
+    }
+
+
+def needs_view(report):
+    """
+    The needs board: what my lineup leaks at each spot, who I can spare,
+    which teams cross with mine in both directions, and the offers built
+    only out of those spare parts. See `needs.py`.
+    """
+    league_needs = report.get("league_needs")
+    board = report["trade_board"]
+    if not league_needs:
+        return None
+    mine = league_needs["profiles"][board["team_id"]]
+
+    def spare_row(spare):
+        row = player_view(spare["player"])
+        row["position"] = spare["position"]
+        row["cost_per_week"] = spare["cost_per_week"]
+        return row
+
+    partners = []
+    for match in needs.partners(board, league_needs):
+        if not match["mutual"]:
+            continue
+        partners.append({
+            "team_id": match["team_id"],
+            "name": match["team"].team_name,
+            "fit": match["fit"],
+            "they_fill": [
+                {"position": h["position"], "need_per_week": h["need_per_week"]}
+                for h in match["they_fill"]
+            ],
+            "i_fill": [
+                {"position": h["position"], "need_per_week": h["need_per_week"]}
+                for h in match["i_fill"]
+            ],
+            "their_spares": [
+                spare_row(s)
+                for s in needs.spare_players(league_needs["profiles"][match["team_id"]])[:4]
+            ],
+        })
+
+    return {
+        "holes": [
+            {
+                "position": hole["position"],
+                "need_per_week": hole["need_per_week"],
+                "raw_need": hole["raw_need_per_week"],
+                "free_fix": hole["free_fix_per_week"],
+                "replacement": (hole.get("replacement") or {}).get("name"),
+                "bar": hole["bar"],
+            }
+            for hole in needs.holes(mine)
+        ],
+        "spares": [spare_row(s) for s in needs.spare_players(mine)],
+        "partners": partners,
+        "ideas": [trade_view(t) for t in report.get("needs_ideas") or []],
     }
 
 
@@ -309,6 +391,11 @@ def page_payload(report):
             "deadline": board["settings"]["deadline"],
             "veto_votes": board["settings"]["veto_votes"],
             "ideas": [trade_view(t) for t in report["trade_ideas"]],
+            "set_aside": [
+                dict(trade_view(t), set_aside=t.get("set_aside"))
+                for t in report.get("set_aside_ideas") or []
+            ],
+            "needs": needs_view(report),
             "teams": roster_for_checker(board),
         },
     }
@@ -458,6 +545,20 @@ class AppState:
         )
         result["partner"] = teams[partner_id]["name"]
         result["partner_id"] = int(partner_id)
+
+        # How the offer reads to them, worked out from the saved board rather
+        # than asking ESPN again. The checker is where this matters most: it
+        # is the one place you are pricing a trade you invented yourself.
+        try:
+            bar = needs.starter_bar(
+                {tid: {"players": t["players"]} for tid, t in teams.items()}, board["slots"]
+            )
+            their_profile = needs.profile(
+                theirs, board["slots"], board["weeks"], board["first_week"], bar
+            )
+            result["perception"] = needs.perception(result, their_profile)
+        except Exception:
+            result["perception"] = None
         return trade_view(result)
 
 

@@ -122,16 +122,22 @@ def tradeable(players):
     ]
 
 
-def ideas_with(mine, theirs, roster_limit, slots, weeks, first_week):
+def ideas_with(mine, theirs, roster_limit, slots, weeks, first_week,
+               my_pieces=None, their_pieces=None):
     """
     Every one-for-one, two-for-one and one-for-two trade with one opponent
     that improves both lineups, best for me first.
+
+    By default every player worth trading on both rosters is tried. Pass
+    `my_pieces` / `their_pieces` to search a shortlist instead -- `needs.py`
+    does this to build offers only out of the players each team can spare.
+    The valuation is identical either way; only the search is narrowed.
     """
     my_base = waivers.team_value(mine, slots, weeks, first_week)
     their_base = waivers.team_value(theirs, slots, weeks, first_week)
 
-    my_pieces = tradeable(mine)
-    their_pieces = tradeable(theirs)
+    my_pieces = tradeable(my_pieces if my_pieces is not None else mine)
+    their_pieces = tradeable(their_pieces if their_pieces is not None else theirs)
     top = lambda players: sorted(players, key=waivers.per_game_value, reverse=True)[:TWO_FOR_ONE_DEPTH]
 
     shapes = [((a,), (b,)) for a in my_pieces for b in their_pieces]
@@ -244,6 +250,17 @@ def build(league, team_id, season, week=None, use_experts=True, force_refresh=Fa
         usage.attach(everyone, usage.load(season))
     except Exception:
         pass
+    # Games played with a different quarterback stop counting toward a
+    # receiver's average -- see `situation.py`. Done before scoring, so
+    # every number downstream already has it.
+    try:
+        import situation
+        # The waiver pool as well: a starter can be hurt AND unrostered,
+        # which is exactly the case this exists for.
+        pool = waivers.free_agent_pool(league, first_week, byes, lineup.open_slots(league))
+        situation.attach(everyone, season, waivers.per_game_value, also=pool)
+    except Exception:
+        pass  # a missing play-by-play file must never stop a trade board
     expert_summary = None
     if use_experts:
         _, by_position = weekly_rankings.load_for_league(

@@ -26,6 +26,7 @@ here always matches what those tools say in detail.
 import statistics
 
 import lineup
+import needs
 import trades
 import upside
 import waivers
@@ -342,6 +343,26 @@ def build(league, team_id, season, use_experts=True, force_refresh=False, progre
     )
     trade_ideas = trades.find_ideas(trade_board)
 
+    # What every team is short of and who they can spare. Cheap next to the
+    # trade search itself, and it gives two things the search cannot: offers
+    # built only out of the pieces both sides can part with, and -- on every
+    # idea, including the ones above -- how the offer will READ to the other
+    # manager. See `needs.py`.
+    league_needs = needs.build(trade_board, waiver_report.get("free_agents"))
+    needs_ideas = needs.find_ideas(trade_board, league_needs)
+    their_profiles = league_needs["profiles"]
+    my_profile = their_profiles[team_id]
+    for idea in trade_ideas:
+        idea["perception"] = needs.perception(idea, their_profiles[idea["partner"].team_id])
+    # Trades whose entire gain is at a position the waiver wire refills for
+    # free are set aside rather than ranked -- paying a player for something
+    # that costs a claim is the mistake this board exists to prevent. They
+    # are kept, and counted, so the page can say what it is not showing.
+    waiver_fixable = [i for i in trade_ideas if not needs.worth_trading_for(i, my_profile)]
+    for idea in waiver_fixable:
+        idea["set_aside"] = needs.only_buys_what_waivers_give(idea, my_profile)
+    trade_ideas = [i for i in trade_ideas if needs.worth_trading_for(i, my_profile)]
+
     gaps = position_gaps(trade_board)
     moves, fixes = opportunities(start_sit_board, waiver_report, gems, trade_ideas, gaps)
 
@@ -361,6 +382,9 @@ def build(league, team_id, season, use_experts=True, force_refresh=False, progre
         "gems": gems,
         "trade_board": trade_board,
         "trade_ideas": trade_ideas,
+        "set_aside_ideas": waiver_fixable,
+        "league_needs": league_needs,
+        "needs_ideas": needs_ideas,
     }
 
 

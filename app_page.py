@@ -84,6 +84,19 @@ PAGE_HTML = r"""<!doctype html>
   .track .mid { position:absolute; left:50%; top:-3px; bottom:-3px; width:1px; background:var(--dim); opacity:.5; }
   .track .fill { position:absolute; top:0; bottom:0; border-radius:99px; }
   .barrow .num { text-align:right; font-variant-numeric:tabular-nums; }
+  .accent-note { color:var(--accent); }
+  .aside { margin:6px 0 14px; }
+  .aside summary { cursor:pointer; color:var(--dim); font-size:13px; padding:8px 0; }
+  .aside[open] summary { color:var(--ink); }
+  .reads { margin-top:10px; padding-top:10px; border-top:1px dashed var(--line); }
+  .reads .pitch { margin-top:6px; font-size:13px; color:var(--ink); background:var(--panel2);
+                  border:1px solid var(--line); border-radius:11px; padding:9px 11px; line-height:1.45; }
+  .needrow { display:grid; grid-template-columns:52px 1fr auto; gap:10px; align-items:baseline;
+             font-size:14px; padding:7px 0; border-bottom:1px solid var(--line); }
+  .needrow:last-child { border-bottom:0; }
+  .needrow .num { text-align:right; font-variant-numeric:tabular-nums; font-weight:700; }
+  .fitrow { padding:10px 0; border-bottom:1px solid var(--line); }
+  .fitrow:last-child { border-bottom:0; }
   .section-head { display:flex; align-items:center; gap:10px; margin-bottom:8px; }
   .section-head .title { font-weight:700; font-size:16px; }
   .move { display:block; width:100%; text-align:left; background:var(--panel2); border:1px solid var(--line);
@@ -484,6 +497,7 @@ function tradeCard(t, id) {
   const names = (list) => list.map(p => `<div style="font-weight:600">${esc(p.name)}${p.injury ? ` <span class="pill warn">${esc(p.injury)}</span>` : ""}</div>
     <div class="muted small">${esc(p.position)} · ${p.normal_week?.toFixed(1) ?? "–"} pts/wk</div>
     ${p.usage ? `<div class="muted small">${esc(p.usage)}</div>` : ""}
+    ${p.situation ? `<div class="small accent-note">${esc(p.situation)} — those games no longer count toward his average</div>` : ""}
     ${p.playoffs ? `<div class="small ${p.playoff_bye ? "bad" : "muted"}">${esc(p.playoffs)}</div>` : ""}`).join("");
   const verdict = (n) => n >= 2 ? "good" : n >= 0.5 ? "good" : n > -0.5 ? "" : "bad";
   let lopsided = "";
@@ -500,7 +514,24 @@ function tradeCard(t, id) {
     <div class="muted small">points per week to each best lineup</div>
     ${t.i_cut.length ? `<div class="muted small" style="margin-top:6px">You'd need to drop: ${esc(t.i_cut.join(", "))}</div>` : ""}
     ${t.they_cut.length ? `<div class="muted small" style="margin-top:6px">They'd need to drop: ${esc(t.they_cut.join(", "))}</div>` : ""}
-    ${lopsided ? `<div class="warn small" style="margin-top:8px">${esc(lopsided)}</div>` : ""}</div>`;
+    ${lopsided ? `<div class="warn small" style="margin-top:8px">${esc(lopsided)}</div>` : ""}
+    ${readsBlock(t.perception)}</div>`;
+}
+
+// How the offer looks to the OTHER manager -- he compares points per game and
+// knows his own holes, he does not run this program. Never part of the
+// numbers above; it only decides whether the offer is worth sending.
+function readsBlock(seen) {
+  if (!seen) return "";
+  const tone = seen.reads === "easy yes" ? "good" : seen.reads === "hard sell" ? "bad" : "warn";
+  const fills = seen.fills.length
+    ? seen.fills.map(f => `${esc(f.name)} fills their ${esc(f.position)} hole (${signed(f.need_per_week)}/wk)`).join(" · ")
+    : "Fills no hole they can see.";
+  return `<div class="reads">
+    <div class="section-head" style="margin-bottom:6px"><span class="pill ${tone}">${esc(seen.reads.toUpperCase())}</span>
+      <span class="muted small">how it reads to them</span></div>
+    <div class="muted small">${fills}</div>
+    <div class="pitch">“${esc(seen.pitch)}”</div></div>`;
 }
 
 function openRoster(teamId) {
@@ -520,6 +551,9 @@ function tradeWith(teamId) {
   setTab("trades", "checker");
 }
 
+// A player who costs nothing to lose reads better as "free" than as "-0.0".
+const spareCost = (n) => n < 0.05 ? `<span class="good">free</span>` : `−${n.toFixed(1)}`;
+
 const POSITION_ORDER = ["QB", "RB", "WR", "TE", "K", "D/ST"];
 
 function renderRoster(d, team) {
@@ -537,6 +571,7 @@ function renderRoster(d, team) {
     return `<div class="player"><div class="who">
         <div class="name"><span class="pos-tag">${esc(p.position)}</span>${esc(p.name)}${flag}</div>
         <div class="muted small">${esc(p.team || "")}${p.ros_rank ? " · experts " + esc(p.ros_rank) : ""}${p.usage ? " · " + esc(p.usage) : ""}</div>
+        ${p.situation ? `<div class="small accent-note">${esc(p.situation)}</div>` : ""}
         ${p.playoffs ? `<div class="small ${p.playoff_bye ? "bad" : "muted"}">${esc(p.playoffs)}</div>` : ""}
         ${idea !== undefined ? `<button class="team-link small" onclick="closeRoster('trade-${idea}')">In a trade idea ›</button>` : ""}
       </div><div class="pts">${p.normal_week?.toFixed(1) ?? "–"}<div class="muted small" style="font-weight:400">pts/wk</div></div></div>`;
@@ -562,11 +597,22 @@ function renderTrades(d) {
   const t = d.trades;
 
   let html = `<div class="muted small" style="margin-top:4px">Trade deadline: ${esc(t.deadline || "none")} · Veto votes needed: ${esc(t.veto_votes ?? "–")}</div>`;
+  html += renderNeeds(t.needs);
   html += deckHead("Trades that help both teams", t.ideas.length, "trades");
   if (!t.ideas.length) html += `<div class="card muted">No trade clearly helps both you and another team right now.</div>`;
   html += `<div class="deck">`;
   t.ideas.forEach((idea, n) => { html += tradeCard(idea, `trade-${n}`); });
   html += `</div>`;
+
+  // Set aside rather than hidden: a trade whose whole gain sits at a spot the
+  // waiver wire refills for free is a bad deal even when the maths likes it,
+  // but you should still be able to see what was left out and why.
+  const aside = t.set_aside || [];
+  if (aside.length) {
+    html += `<details class="aside"><summary>${aside.length} more that waivers can fix for free</summary>
+      <div class="muted small" style="margin:8px 0">These improve both lineups, but everything you'd get plays a position you can refill off the wire for nothing — so you'd be paying a player for something a claim would buy.</div>
+      <div class="deck">${aside.map((idea, n) => tradeCard(idea, `aside-${n}`)).join("")}</div></details>`;
+  }
 
   const others = t.teams.filter(x => !x.mine), mine = t.teams.find(x => x.mine);
   const partner = Number(recall("partner")) || others[0]?.team_id;
@@ -577,6 +623,58 @@ function renderTrades(d) {
     <div><div class="muted small" style="margin-bottom:4px">You get</div><div id="their-players"></div></div></div>
     <button class="primary" id="check" style="width:100%;margin-top:12px">Check this trade</button>
     <div id="check-result" style="margin-top:12px"></div></div>`;
+  return html;
+}
+
+// The needs board: where my lineup leaks points, who I can spare for nothing,
+// and which teams cross with mine in BOTH directions. This is the "where
+// should I even be looking" half of the Trades tab; the decks below it are
+// the answers.
+function renderNeeds(n) {
+  if (!n) return "";
+  let html = "";
+
+  html += `<h2>What I need</h2><div class="card">`;
+  html += n.holes.length
+    ? n.holes.map(h => `<div class="needrow"><b>${esc(h.position)}</b>
+        <span class="muted small">an average ${esc(h.position)} here scores ${h.bar.toFixed(1)}${h.free_fix >= 0.1 && h.replacement ? ` · waivers already fix ${h.free_fix.toFixed(1)} of ${h.raw_need.toFixed(1)} — ${esc(h.replacement)} is free` : ""}</span>
+        <span class="num bad">${signed(h.need_per_week)}</span></div>`).join("")
+      + `<div class="muted small" style="margin-top:10px">Points a week a TRADE at each spot is worth — what an average starter would add, minus whatever the waiver wire already fixes for free. A hole the wire can fill is not worth paying a player for.${n.holes.some(h => h.position === "K" || h.position === "D/ST") ? " A kicker or defence hole is real, but it's a waiver fix, not a trade — nobody trades them." : ""}</div>`
+    : `<div class="muted">Every spot is close to a league-average starter. Nothing worth trading for.</div>`;
+  html += `</div>`;
+
+  html += `<h2>What I can spare</h2><div class="card">`;
+  html += n.spares.length
+    ? n.spares.map(p => `<div class="needrow"><span class="pos-tag">${esc(p.position)}</span>
+        <span><b>${esc(p.name)}</b> <span class="muted small">${p.normal_week?.toFixed(1) ?? "–"} pts/wk</span></span>
+        <span class="num ${p.cost_per_week <= 0.5 ? "good" : ""}">${spareCost(p.cost_per_week)}</span></div>`).join("")
+      + `<div class="muted small" style="margin-top:10px">What losing him would actually cost my lineup — the next man slides into his slot. Near zero means free to trade.</div>`
+    : `<div class="muted">Nobody. Every player worth trading is holding a lineup spot.</div>`;
+  html += `</div>`;
+
+  html += deckHead("Offers built from what both sides can spare", n.ideas.length, "offers");
+  html += n.ideas.length
+    ? `<div class="deck">` + n.ideas.map((idea, i) => tradeCard(idea, `need-trade-${i}`)).join("") + `</div>`
+    : `<div class="card muted">Nobody's spare depth lines up with anybody's hole right now.</div>`;
+  if (n.partners.length) {
+    html += deckHead("Who fits", n.partners.length, "teams");
+    html += `<div class="deck">`;
+    for (const p of n.partners) {
+      const line = (list) => list.map(h => `${esc(h.position)} ${signed(h.need_per_week)}`).join(" · ");
+      html += `<div class="card"><div class="section-head">
+        <button class="team-link" onclick="openRoster(${Number(p.team_id)})">${esc(p.name)} ›</button>
+        <span class="muted small">fit ${p.fit.toFixed(1)}</span></div>
+        <div class="fitrow"><div class="muted small">They can fill for me</div><div>${line(p.they_fill)}</div></div>
+        <div class="fitrow"><div class="muted small">I can fill for them</div><div>${line(p.i_fill)}</div></div>
+        <div class="fitrow"><div class="muted small" style="margin-bottom:4px">They can spare</div>
+          ${p.their_spares.map(sp => `<div class="needrow"><span class="pos-tag">${esc(sp.position)}</span>
+            <span><b>${esc(sp.name)}</b> <span class="muted small">${sp.normal_week?.toFixed(1) ?? "–"} pts/wk</span></span>
+            <span class="num ${sp.cost_per_week <= 0.5 ? "good" : ""}">${spareCost(sp.cost_per_week)}</span></div>`).join("")}</div>
+        <button class="move" onclick="tradeWith(${Number(p.team_id)})">Build a trade with them ›</button></div>`;
+    }
+    html += `</div><div class="muted small" style="margin:-2px 0 10px">Only teams that cross with mine in both directions — they have depth at a spot I'm leaking points at, and I have depth at one of theirs. One direction alone is a request, not an offer.</div>`;
+  }
+
   return html;
 }
 
@@ -688,7 +786,12 @@ function renderGuide() {
       ["What to bid", "A suggested FAAB bid. Once your league has five claims above the minimum bid, it adjusts to what winning claims actually cost there."],
     ])}
     ${section("Trades", "Trades that help both sides — the ones that get accepted", [
-      ["Trade ideas", "One-for-one and two-for-one trades with every team that improve both lineups."],
+      ["Trade ideas", "One-for-one and two-for-one trades with every team that improve both lineups. A trade whose whole gain sits at a position you could refill off the waiver wire for free is set aside under \"waivers can fix for free\" — it's still shown, just not sold to you, because a claim costs nothing and a trade costs a player."],
+      ["What I need", "Points a week your best lineup leaks at each spot — what one league-average starter there would add. Not \"you only have two running backs\": a hole is only a hole if it is costing you points."],
+      ["What I can spare", "What losing a player would actually cost you, once the next man slides into his slot. A fourth receiver on a team that starts three is worth about nothing to you and possibly a lot to someone else."],
+      ["Who fits", "Teams that cross with yours in both directions — they can spare someone at a spot you're leaking points at, and you can spare someone at one of theirs. One direction alone is a request, not an offer."],
+      ["Games that no longer count", "A receiver's past games only count as evidence if the same quarterback was throwing. When his team is about to start someone else — an injured starter back, or a change under centre — those games stop counting toward his average and his value leans on the projections instead. You'll see the reason on the player (\"2 of 2 games thrown by C.Rush, not Michael Penix Jr.\") so you can check it. It cuts both ways: a hot start with the backup is discounted too. Running backs are left alone, because carries arrive whoever is under centre."],
+      ["How it reads to them", "The other manager doesn't run this program: he compares points per game and knows his own holes. EASY YES, NEEDS A PITCH or HARD SELL is how the offer looks to him, plus the line to send. It never changes whether a trade is good for you — only whether it's worth sending."],
       ["Trade checker", "Tick players on each side to see points per week gained or lost, for you and for them."],
       ["Their roster", "Tap the other team's name on any trade to see their whole roster, and start a trade with them from there."],
       ["Looks lopsided?", "A warning when a fair trade will look unfair by name, so you know to explain why it helps them."],

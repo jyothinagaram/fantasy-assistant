@@ -95,7 +95,9 @@ def per_game_value(player):
 
     His projection and his actual per-game average, blended. Before he has
     played, it is all projection. After four games it is half and half, and
-    it leans further toward what he has really done after that.
+    it leans further toward what he has really done after that. Games that
+    no longer describe his situation -- a different quarterback throwing to
+    him -- are not counted among them (`situation.py`).
 
     "His projection" is ESPN's and the FantasyPros rest-of-season consensus,
     averaged equally -- neither source has earned the tiebreak -- or ESPN's
@@ -106,7 +108,13 @@ def per_game_value(player):
     if experts is not None:
         projected = ESPN_WEIGHT * projected + EXPERT_WEIGHT * experts
     actual = player.get("season_actual_avg")
-    games = player.get("games_played") or 0
+
+    # Games played in a situation he is no longer in do not count as
+    # evidence about him -- see `situation.py`. A receiver whose only games
+    # were thrown by an injured starter's backup falls all the way back to
+    # his projection, which is the honest answer when nothing in the record
+    # describes the offence he is about to play in.
+    games = max(0, (player.get("games_played") or 0) - (player.get("stale_games") or 0))
     if not games or actual is None:
         return projected
     if player.get("position") in NOISY_POSITIONS:
@@ -344,6 +352,21 @@ def first_playable_week(league, season):
     return week
 
 
+def free_agent_pool(league, first_week, byes, slots):
+    """
+    Everyone on the waiver wire who could fill a starting slot.
+
+    Also the baseline for what a position costs NOTHING to fix -- see
+    `needs.replacement_level`.
+    """
+    pool = league.free_agents(week=first_week, size=FREE_AGENT_POOL)
+    return [
+        as_player(p, first_week, byes)
+        for p in pool
+        if any(p.position in lineup.SLOT_ELIGIBILITY[s] for s in slots)
+    ]
+
+
 def build(league, team_id, season, week=None, use_experts=True, force_refresh=False):
     """
     Everything the waiver report needs for one league.
@@ -362,13 +385,8 @@ def build(league, team_id, season, week=None, use_experts=True, force_refresh=Fa
 
     rosters = lineup.rosters_for_week(league, first_week)
     mine = [as_player(p, first_week, byes) for p in rosters.get(team_id, team.roster)]
-    pool = league.free_agents(week=first_week, size=FREE_AGENT_POOL)
     slots = lineup.open_slots(league)
-    free_agents = [
-        as_player(p, first_week, byes)
-        for p in pool
-        if any(p.position in lineup.SLOT_ELIGIBILITY[s] for s in slots)
-    ]
+    free_agents = free_agent_pool(league, first_week, byes, slots)
 
     everyone = mine + free_agents
     try:
@@ -376,6 +394,11 @@ def build(league, team_id, season, week=None, use_experts=True, force_refresh=Fa
         usage.attach(everyone, usage.load(season))
     except Exception:
         pass  # snap and target data is shown, never required
+    try:
+        import situation
+        situation.attach(everyone, season, per_game_value)
+    except Exception:
+        pass  # see trades.build
     import defense
     defense.attach_for_league(league, season, first_week, everyone)
     expert_summary = None
@@ -439,6 +462,7 @@ def build(league, team_id, season, week=None, use_experts=True, force_refresh=Fa
         "budget_left": budget_left,
         "opponents": sorted(opponents, key=lambda o: o["budget_left"], reverse=True),
         "swaps": swaps,
+        "free_agents": free_agents,
         "roster_full": roster_full,
         "expert_summary": expert_summary,
         "ros_summary": ros_summary,

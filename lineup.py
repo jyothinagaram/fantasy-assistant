@@ -437,6 +437,18 @@ def build(league, team_id, week, season, use_experts=True, force_refresh=False):
     except Exception:
         pass  # snap and target data is shown, never scored here
 
+    try:
+        import situation
+        import waivers as _waivers
+        situation.attach(
+            players, season, _waivers.per_game_value,
+            also=_waivers.free_agent_pool(
+                league, week, _waivers.bye_weeks(league), open_slots(league)
+            ),
+        )
+    except Exception:
+        pass  # see trades.build
+
     import defense
     defense.attach_for_league(league, season, week, players)  # shown, never scored
     import weather

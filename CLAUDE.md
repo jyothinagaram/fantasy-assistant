@@ -184,9 +184,95 @@ The draft tooling is built and tested. Files:
   judge it, even when lineup maths says it helps them.
 - `trade_finder.py` — the trade command. No arguments: up to 2 ideas per
   opponent, 10 total, per league. `--league X --give A B --get C` checks one
-  specific trade (offered or received) from both sides.
+  specific trade (offered or received) from both sides. `--needs` runs the
+  needs model instead: the league's holes and spare parts, who fits me and in
+  which direction, then offers built only out of what both sides can spare,
+  each with how it reads to the other manager and the line to send him.
+- `needs.py` — the needs model, the layer that decides WHERE to look before
+  `trades.py` decides whether a trade is good. For every team it prices, in
+  the same pts/week currency as everything else: a **need** at a position
+  (what that team would gain from one league-average starter there, measured
+  by adding a phantom player to `waivers.team_value`) and a **spare** (a
+  player worth 6+ pts whom the team could lose for under 1 pt/week, because
+  the next man slides into the slot). The bar for "average starter" is the
+  median of the top N at that position league-wide, N = teams × slots started,
+  with a flex slot split evenly between the positions it accepts — an average
+  of everyone rostered would be dragged down by benched streamers and make
+  every hole look filled. **Only the cheapest spare at a position is offered**
+  (plus anyone within 1 pt/week of him): on a team of interchangeable
+  receivers even the nominal WR1 prices as cheap to lose, but offering the
+  costlier of two players who fill the same hole is strictly dominated.
+  **A need is only worth trading for if the waiver wire cannot fix it
+  (2026-09-22).** Every hole is priced twice — against an average starter,
+  and against the best player actually free — and only the difference is
+  what a trade there is worth. This came from a real complaint: the board
+  recommended almost nothing but quarterback trades, because in all three
+  leagues a 19-20 pt QB (Bryce Young, Tyler Shough) sits in free agency, so
+  a "QB hole" scored +2.8 to +4.4/wk that a waiver claim fixes for nothing.
+  After the correction every league's QB need fell to +0.0 and RB/WR
+  survived intact — the honest version of "receivers and running backs win
+  leagues": not a preference for those positions, but that their pools run
+  dry and the QB pool does not. **The discount applies to what I CHASE, not
+  to what THEY will accept** (`holes(..., waiver_aware=False)`): the other
+  manager sees the hole in his lineup, not the discount, and his lineup
+  really does improve. Getting that backwards emptied the board completely
+  the first time. `needs.worth_trading_for` applies the same rule to the
+  main ideas deck — those trades are set aside with a reason, never
+  silently dropped.
+  A partner is a "fit" only when the crossing runs BOTH ways — they have
+  players at a position I leak points at and vice versa; one direction alone
+  is a request, not an offer. Ideas are then narrowed **by position, not by
+  spare-ness** — asking only for players the other team can spare works at
+  deep positions and fails exactly where it matters, because nobody has a
+  spare running back, which is the whole reason the position is worth
+  trading for. A scarce position has to be PAID for, out of the depth I can
+  spare. (Narrowing by spare-ness hid real RB win-wins — Omarion Hampton,
+  McCaffrey — that the unfiltered search found.) The shortlist is handed to
+  `trades.ideas_with` (which now takes optional
+  `my_pieces`/`their_pieces` shortlists; the valuation is unchanged, only
+  the search is narrowed). **Perception is modelled separately from value**
+  and never touches it: `needs.perception` reports how the offer reads to
+  the other manager — raw points for/against him, whether what he gets lands
+  on a hole he can see — as EASY YES / NEEDS A PITCH / HARD SELL, plus the
+  sentence to send him. It changes whether a trade is worth sending, never
+  whether it is good.
 - `test_trades.py` — a WR-rich vs RB-rich pair of teams where the win-win is
   obvious, forced cuts on 2-for-1s, and the padding filter.
+- `test_needs.py` — the same mirrored rosters: the flex split, the starter
+  bar resisting bench drag, depth that never starts costing nothing to lose,
+  the dominated-spare rule, a twin roster being no fit, both perception
+  verdicts, and that narrowing the search leaves the valuation identical.
+- `situation.py` — games that no longer describe the player. A season
+  average is only evidence if the games in it were played in the situation
+  he is in now. From the nflverse play-by-play already on disk it finds the
+  weeks a receiver's passes were thrown by somebody other than the
+  quarterback his team should be starting now, marks them `stale_games`,
+  and `waivers.per_game_value` stops counting them — so his value falls back
+  toward the projections. **The case that prompted it (2026-09-22):** Drake
+  London's only two games were thrown by Cooper Rush with Michael Penix Jr.
+  hurt, so his 7.2 average was a real number about an offence that no longer
+  exists; it was dragging him to 12.5 against a 15.4 projection. After:
+  15.2. **It cuts both ways** — Jaxon Smith-Njigba's flattering 34.4 with
+  D.Lock stopped inflating him (25.1 → 20.5).
+  The expected starter is the best FIT quarterback the league can see, and
+  **the waiver pool has to be included** — that was the bug in the first
+  version: Penix was unrostered while injured, so a search of rosters alone
+  found no Atlanta starter and changed nothing. **Quarterbacks are matched
+  by nflverse→ESPN id, never by name**, because "A.St. Brown" would fail a
+  first-initial match and a mismatch looks exactly like the thing being
+  detected — it would mark whole rosters stale and move every number.
+  Guards: a quarterback who is hurt/suspended/IR is never the benchmark (he
+  cannot be who they start), and a sub-10-point quarterback is not treated
+  as anyone's plan (a rostered third-stringer on a team whose real starter
+  nobody rosters would otherwise mark every week stale). **Running backs are
+  deliberately excluded** — carries arrive whoever is under centre, and
+  marking a back's whole average stale would throw away the part of his game
+  that did not change. Attached in `trades.build`, `waivers.build` and
+  `lineup.build`, so trades, start/sit and add/drop all move together. A
+  missing play-by-play file marks nothing and changes nothing.
+- `test_situation.py` — the London case, the mirror case that flatters, the
+  no-change case, the injured/third-string guards, the unrostered-starter
+  bug, running backs untouched, and a missing file.
 - `coach.py` + `team_report.py` — the team check-up, meant to be run FIRST
   each week. (1) Results: last week's score, league-wide rank of that score,
   points left on the bench (best legal lineup from actual points, IR slot
@@ -297,8 +383,13 @@ The draft tooling is built and tested. Files:
   vs league, biggest WEAKNESSES then STRENGTHS, each with waiver/stash/trade
   suggestions that jump to and highlight the matching card on the Waivers or
   Trades tab; strengths list trades that SELL from that depth), **Start/Sit**,
-  **Waivers** (under-the-radar first, then claims), **Trades** (ideas + a
-  checkbox trade checker), **Guide** (plain-language explanation of every
+  **Waivers** (under-the-radar first, then claims), **Trades** (the needs
+  board — "What I need" (priced after waivers, showing what the wire already
+  fixes), "What I can spare", "Offers built from what both sides can spare",
+  then a "Who fits" deck of the teams that cross with mine in both
+  directions — followed by the full both-lineups ideas deck, a collapsed
+  "N more that waivers can fix for free" section, and a checkbox trade
+  checker), **Guide** (plain-language explanation of every
   feature, data source and ground rule; static, works before data loads —
   keep it in sync when features change). Phone-first: tabs at the bottom under 760px. Lists of cards (weaknesses,
   strengths, under-the-radar, claims, trade ideas) are "decks": on a phone one
@@ -322,6 +413,12 @@ The draft tooling is built and tested. Files:
   Each league is built by `coach.build` in ONE background worker thread, one
   league at a time (the scoring-rules quirk), saved to `cache/app_<id>.json`
   and served instantly on restart; the page polls and shows data age, and has
+  **Every trade card in the app — an idea, a needs-matched offer, or one the
+  checker just valued — carries a "how it reads to them" block**: EASY YES /
+  NEEDS A PITCH / HARD SELL, which of their holes the players land on, and
+  the line to send. It comes from `needs.perception` and never touches the
+  numbers above it (see `needs.py`). The checker works it out from the saved
+  private board in ~40ms, so it costs no extra ESPN call.
   Refresh. The trade checker values trades from a server-side copy of every
   roster's valuation fields, so it never re-asks ESPN. No build step, no new
   dependencies. `APP_NO_BROWSER=1` skips opening a browser (for testing).
@@ -356,7 +453,7 @@ is flagged but deliberately unscored — it cuts both ways.
 Start/sit is now built (`weekly_rankings.py`, `lineup.py`, `status.py`,
 `start_sit.py`), including the pre-kickoff check: `start_sit.py --lock`.
 Waivers are built too (`waivers.py`, `waiver_wire.py`, `upside.py`), and
-trades (`trades.py`, `trade_finder.py`). Still missing: matchup-aware logic
+trades (`trades.py`, `trade_finder.py`, `needs.py`). Still missing: matchup-aware logic
 (who I play this week), broader data collection. The UI is built (`app.py`). The user chose FREE
 data sources only, in this order: snap counts and target data (nflverse) —
 DONE, rest-of-season FantasyPros rankings, defence vs position from
@@ -381,7 +478,9 @@ he would be healthy) while no practice at all is -45%.
 
 Rough build order: (1) draft tooling — done, blended with FantasyPros,
 (2) start/sit — done, (3) waiver and pickup/drop recommendations — done (bids still heuristic),
-(4) trades — done; matchup-aware still to do, (5) UI and more data sources.
+(4) trades — done, including the needs model and situation-aware values
+(`needs.py`, `situation.py`, 2026-09-22);
+matchup-aware still to do, (5) UI and more data sources.
 
 **Never guess a bye from a zero projection (fixed 2026-09-14).** ESPN
 projects 0 for a player it expects to miss a game — Kyler Murray in the
