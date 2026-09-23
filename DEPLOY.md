@@ -71,14 +71,31 @@ like an app, and the password is remembered for 30 days.
 
 1. Sign up at <https://uptimerobot.com> (free).
 2. **Add New Monitor** → type **HTTP(s)**.
-3. URL: your Render address. Interval: **5 minutes**.
+3. URL: your Render address **with `/healthz` on the end** —
+   `https://your-app.onrender.com/healthz`. Interval: **5 minutes**.
 4. Save.
+
+Point it at `/healthz`, not at the front page. `/healthz` answers
+instantly and needs no password, so a monitor can check it without
+logging in. The front page has to render, and while the app is working
+out a league on a free instance's tenth of a CPU that can be slow enough
+for a monitor to call it down when it is perfectly fine.
 
 That is it. The service now stays awake, so opening it on your phone is
 instant instead of a three-minute rebuild.
 
-> UptimeRobot will see the login page and report the site as "up" — that is
-> correct and expected. It never logs in, and it never sees your teams.
+> `/healthz` replies `{"ok": true}` and nothing else — no league names, no
+> teams, nothing worth protecting. The monitor never logs in and never sees
+> your data.
+
+**If you get "down" alerts anyway**, check the Render logs at that
+timestamp. Two different things look identical from outside:
+>
+> * **Slow, not dead.** A league refresh on a free instance can saturate
+>   the CPU for minutes. Raise the monitor's timeout to 30 seconds.
+> * **Actually restarting.** Render restarts free services, and a restart
+>   drops requests for a few seconds. Occasional alerts are normal; a
+>   constant stream is not.
 
 ---
 

@@ -752,6 +752,17 @@ def make_handler(state):
             self.wfile.write(body)
 
         def do_GET(self):
+            # A pulse for whatever is watching the service, answered before
+            # anything else and without the password. It says only that the
+            # process is alive -- no league names, no teams, nothing worth
+            # protecting -- because the thing pinging it has no login and
+            # should not need one. Pointing a monitor at the login page
+            # instead makes it render HTML and compete with a league build
+            # for a tenth of a CPU, which is how a healthy app gets reported
+            # as down.
+            if self.path in ("/healthz", "/health"):
+                return self._send({"ok": True}, code=200)
+
             if not self.signed_in():
                 # An API call gets a status code the page can act on; a
                 # person gets the login form.
