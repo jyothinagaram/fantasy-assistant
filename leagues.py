@@ -53,7 +53,7 @@ def discover_leagues(creds):
     Asks ESPN which football leagues you are in this season.
 
     Returns a list like:
-        [{"league_id": 946985, "name": "Only Sig Chi's, Mkay?", "team_id": 8}, ...]
+        [{"league_id": 123456, "name": "Your League Name", "team_id": 1}, ...]
 
     Returns an empty list if ESPN will not answer -- callers should fall
     back to whatever single league is configured in .env.

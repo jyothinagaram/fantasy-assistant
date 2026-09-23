@@ -539,11 +539,14 @@ scoring format, and the boards would still look perfectly reasonable.
 Three ESPN leagues for 2026, all 12-team, and they do NOT share rules —
 anything that assumes one format is a bug:
 
-| League | ID | My team | Rules | Waivers | Trades |
-|---|---|---|---|---|---|
-| The Boyz are Back | 930020 | 2 | half PPR, **2 flex**, 8 playoff teams | FAAB **$100**, min bid $0, 12:00, every day but Tue | **no deadline**, 4 veto votes |
-| D.C.F. | 1648293 | 10 | **full PPR**, 1 flex, **6 playoff teams** | FAAB **$75**, min bid $1, 11:00, every day but Sun/Tue | deadline Dec 4, 4 veto votes |
-| Only Sig Chi's, Mkay? | 946985 | 8 | half PPR, 1 flex, 8 playoff teams | FAAB **$100**, min bid $1, 12:00, every day but Mon/Tue | deadline Dec 2, **0 veto votes** |
+(League and team IDs are deliberately not written down here -- they come
+from `.env` and from `leagues.discover_leagues`, never from this file.)
+
+| League | Rules | Waivers | Trades |
+|---|---|---|---|
+| The Boyz are Back | half PPR, **2 flex**, 8 playoff teams | FAAB **$100**, min bid $0, 12:00, every day but Tue | **no deadline**, 4 veto votes |
+| D.C.F. | **full PPR**, 1 flex, **6 playoff teams** | FAAB **$75**, min bid $1, 11:00, every day but Sun/Tue | deadline Dec 4, 4 veto votes |
+| Only Sig Chi's, Mkay? | half PPR, 1 flex, 8 playoff teams | FAAB **$100**, min bid $1, 12:00, every day but Mon/Tue | deadline Dec 2, **0 veto votes** |
 
 Read from ESPN on 2026-09-09, not assumed. (Playoff counts corrected
 2026-09-14 from `scheduleSettings.playoffTeamCount`: D.C.F. 6, Sig Chi's 8.) Notes that matter:
