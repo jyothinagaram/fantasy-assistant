@@ -403,6 +403,22 @@ The draft tooling is built and tested. Files:
   for games, unknown teams.
 - `test_usage.py` — ID matching, snap trend, preseason rows ignored, shares,
   and missing files.
+- **Two caches make a refresh about twice as fast (2026-09-24).** Profiling
+  one league's trade search found `per_game_value` called **5.7 million**
+  times and `value_in_week` **6.8 million** — both pure functions of fields
+  that stop changing once a board has loaded. `waivers.freeze_values` works
+  out each player's normal-week value once (`_normal_week`), and
+  `waivers.weekly_rows` caches his week-by-week rows (`_weekly_rows`) keyed
+  by the week range, so a different league or a new first week rebuilds
+  rather than quietly reusing the wrong weeks. One league's search went
+  **26.2s → 14.4s** with identical output. **`freeze_values` must be called
+  LAST**, after projections, expert ranks and stale-game marks are attached
+  — freeze earlier and everything downstream is built on a half-finished
+  player; it clears both caches, so calling it again after a late change is
+  the fix. Anything built afterwards (the phantom average starter in
+  `needs.py`, the checker's rosters rebuilt from `private_board`'s stripped
+  fields) simply has no cache and computes the old way. Five tests in
+  `test_waivers.py` pin each cached answer to the uncached one.
 - **The league you are looking at jumps the queue (2026-09-23).** Leagues are
   worked out one at a time (never in parallel — the ESPN library shares
   scoring settings between connections). On a laptop the order barely

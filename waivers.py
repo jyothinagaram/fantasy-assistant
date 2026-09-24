@@ -89,6 +89,37 @@ FREE_AGENT_POOL = 150
 # What a player is worth, week by week
 # ---------------------------------------------------------------------------
 
+# Where a frozen value is kept on a player. See `freeze_values`.
+FROZEN = "_normal_week"
+
+# Where a player's cached week-by-week rows live. See `weekly_rows`.
+WEEKLY = "_weekly_rows"
+
+
+def freeze_values(players):
+    """
+    Works out every player's normal-week value once and remembers it.
+
+    `per_game_value` is a pure function of fields that stop changing the
+    moment a board finishes loading, and the trade search then asks for the
+    same answer millions of times -- 5.7 million calls for one league,
+    which was most of the time a refresh took. This computes each answer
+    once.
+
+    IT MUST BE CALLED LAST, after the projections, the expert rankings and
+    the stale-game marks are all attached. Freeze earlier and every number
+    downstream is quietly built on a half-finished player. Anything created
+    afterwards (the phantom average starter in `needs.py`, the checker's
+    rebuilt rosters) simply has no frozen value and is computed the old
+    way, which is correct, just slower.
+    """
+    for player in players:
+        player.pop(FROZEN, None)
+        player.pop(WEEKLY, None)          # both are built from the same fields
+        player[FROZEN] = per_game_value(player)
+    return players
+
+
 def per_game_value(player):
     """
     What he should score in a normal week for the rest of the season.
@@ -103,6 +134,10 @@ def per_game_value(player):
     averaged equally -- neither source has earned the tiebreak -- or ESPN's
     alone when FantasyPros does not rank him.
     """
+    frozen = player.get(FROZEN)
+    if frozen is not None:
+        return frozen
+
     projected = player.get("season_projected_avg") or 0.0
     experts = player.get("ros_expert_avg")
     if experts is not None:
@@ -142,6 +177,33 @@ def value_in_week(player, week, first_week):
     return per_game_value(player)
 
 
+def weekly_rows(player, weeks, first_week):
+    """
+    One player's week-by-week rows, worked out once and remembered.
+
+    `value_in_week` is a pure function of the player and the week, and the
+    trade search asks for the same answers millions of times over -- 6.8
+    million calls for a single league. The rows are cached on the player
+    under the weeks they were built for, so a different week range (a
+    different league, or a new first week) rebuilds them rather than
+    quietly reusing the wrong ones.
+    """
+    key = (weeks[0], weeks[-1], first_week, len(weeks)) if weeks else ()
+    cached = player.get(WEEKLY)
+    if cached is not None and cached[0] == key:
+        return cached[1]
+    rows = []
+    for week in weeks:
+        points = value_in_week(player, week, first_week)
+        rows.append({
+            "position": player["position"],
+            "score": points,
+            "can_play": points > 0,
+        })
+    player[WEEKLY] = (key, rows)
+    return rows
+
+
 def team_value(players, slots, weeks, first_week):
     """
     Total points your best lineup would score across these weeks.
@@ -149,19 +211,10 @@ def team_value(players, slots, weeks, first_week):
     Solves a fresh lineup for every week, because the best lineup changes
     whenever someone is on bye or hurt.
     """
+    rows = [weekly_rows(player, weeks, first_week) for player in players]
     total = 0.0
-    for week in weeks:
-        weekly = []
-        for player in players:
-            points = value_in_week(player, week, first_week)
-            weekly.append(
-                {
-                    "position": player["position"],
-                    "score": points,
-                    "can_play": points > 0,
-                }
-            )
-        _, starters, _ = lineup.best_lineup(weekly, slots)
+    for index in range(len(weeks)):
+        _, starters, _ = lineup.best_lineup([row[index] for row in rows], slots)
         total += lineup.lineup_total(starters)
     return round(total, 2)
 
@@ -464,6 +517,7 @@ def build(league, team_id, season, week=None, use_experts=True, force_refresh=Fa
             player.setdefault("weekly_projection", None)
     lineup.score(everyone, first_week)
     ros_summary = attach_ros(league, season, everyone, first_week, use_experts, force_refresh)
+    freeze_values(everyone)   # last, once nothing else will change a player
 
     roster_size = sum(
         int(count or 0) for count in league.settings.position_slot_counts.values()

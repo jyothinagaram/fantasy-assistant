@@ -168,6 +168,76 @@ def test_a_drop_spent_twice_is_reported():
     assert waivers.shared_drops(swaps[:1]) == {}
 
 
+# ---------------------------------------------------------------------------
+# The caches. These make a refresh about twice as fast and are exactly the
+# kind of change that silently returns the wrong number, so each one is
+# pinned to the uncached answer.
+# ---------------------------------------------------------------------------
+
+def cache_player(name, position, avg, actual=None, games=0, bye=None):
+    return {"name": name, "position": position, "season_projected_avg": avg,
+            "season_actual_avg": actual, "games_played": games, "bye_week": bye,
+            "injury_status": "ACTIVE", "current_slot": "BE", "score": None}
+
+
+CACHE_SLOTS = ["QB", "RB", "RB", "WR", "WR", "TE"]
+
+
+def cache_roster():
+    return [cache_player("QB1", "QB", 18), cache_player("RB1", "RB", 14, 11.0, 2),
+            cache_player("RB2", "RB", 9), cache_player("WR1", "WR", 15, 20.0, 2),
+            cache_player("WR2", "WR", 11, None, 0, bye=4),
+            cache_player("TE1", "TE", 8), cache_player("WR3", "WR", 6)]
+
+
+def test_freezing_values_changes_no_answer():
+    plain = cache_roster()
+    frozen = waivers.freeze_values(cache_roster())
+    for a, b in zip(plain, frozen):
+        assert waivers.per_game_value(a) == waivers.per_game_value(b), a["name"]
+    assert (waivers.team_value(plain, CACHE_SLOTS, [2, 3, 4], 2)
+            == waivers.team_value(frozen, CACHE_SLOTS, [2, 3, 4], 2))
+
+
+def test_the_weekly_cache_changes_no_answer():
+    """Same roster, valued twice -- the second time off the cache."""
+    roster = cache_roster()
+    first = waivers.team_value(roster, CACHE_SLOTS, [2, 3, 4], 2)
+    second = waivers.team_value(roster, CACHE_SLOTS, [2, 3, 4], 2)
+    assert first == second
+    # And a bye week is still respected through the cache.
+    assert first == waivers.team_value(cache_roster(), CACHE_SLOTS, [2, 3, 4], 2)
+
+
+def test_a_different_week_range_is_not_served_from_the_cache():
+    """The bug this guards: a second league reusing the first one's weeks."""
+    roster = cache_roster()
+    short = waivers.team_value(roster, CACHE_SLOTS, [2, 3], 2)
+    long = waivers.team_value(roster, CACHE_SLOTS, [2, 3, 4, 5], 2)
+    assert long > short, (short, long)
+    # Back to the first range, and it must match what it was.
+    assert waivers.team_value(roster, CACHE_SLOTS, [2, 3], 2) == short
+
+
+def test_freezing_again_picks_up_a_changed_player():
+    """stale_games arrives after the first freeze in some code paths."""
+    roster = waivers.freeze_values(cache_roster())
+    player = next(p for p in roster if p["name"] == "WR1")
+    before = waivers.per_game_value(player)
+    player["stale_games"] = 2          # his games no longer describe him
+    waivers.freeze_values([player])
+    after = waivers.per_game_value(player)
+    assert after != before, (before, after)
+    assert abs(after - 15.0) < 0.01, after   # falls back to his projection
+
+
+def test_a_player_with_no_frozen_value_still_works():
+    """The trade checker rebuilds rosters from stripped fields."""
+    lone = cache_player("Nobody", "WR", 12)
+    assert waivers.per_game_value(lone) == 12
+    assert waivers.team_value([lone], CACHE_SLOTS, [2], 2) == 12
+
+
 if __name__ == "__main__":
     tests = [value for name, value in dict(globals()).items() if name.startswith("test_")]
     for test in tests:

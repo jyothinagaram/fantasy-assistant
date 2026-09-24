@@ -276,6 +276,9 @@ def build(league, team_id, season, week=None, use_experts=True, force_refresh=Fa
     import playoffs
     playoffs.attach(league, season, everyone)  # shown in trades, never scored
 
+    # Last, once nothing else will change a player: see waivers.freeze_values.
+    waivers.freeze_values(everyone)
+
     return {
         "league_name": league.settings.name,
         "team_id": team_id,
